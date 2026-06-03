@@ -1,0 +1,9 @@
+start - Welcome and get your free guide
+subscribe - Join our Telegram channel
+free_guide - Get the free tools and opportunities guide
+latest_tools - Latest useful tools and resources
+opportunities - Latest opportunities and free resources
+services - View our service offerings
+quote - Request a service quote
+contact - Contact information
+about - About GEM and Alliance Trust Realty
