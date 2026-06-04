@@ -4,6 +4,10 @@ function env(name, fallback = "") {
   return process.env[name] || fallback;
 }
 
+function hasUrl(value) {
+  return Boolean(value && value.startsWith("http"));
+}
+
 async function telegram(method, payload) {
   const token = env("BOT_TOKEN");
   if (!token) throw new Error("BOT_TOKEN is missing");
@@ -34,13 +38,34 @@ async function saveLead(lead) {
   }
 }
 
+function socialButtons() {
+  const rows = [];
+  const twitterUrl = env("TWITTER_URL");
+  const tiktokUrl = env("TIKTOK_URL");
+  const facebookUrl = env("FACEBOOK_URL");
+  const instagramUrl = env("INSTAGRAM_URL");
+
+  if (hasUrl(twitterUrl)) rows.push([{ text: "𝕏 Follow on X / Twitter", url: twitterUrl }]);
+  if (hasUrl(tiktokUrl)) rows.push([{ text: "🎵 Follow on TikTok", url: tiktokUrl }]);
+  if (hasUrl(facebookUrl)) rows.push([{ text: "📘 Follow Facebook Page", url: facebookUrl }]);
+  if (hasUrl(instagramUrl)) rows.push([{ text: "📸 Follow Instagram", url: instagramUrl }]);
+
+  return rows;
+}
+
+function socialKeyboard() {
+  const rows = socialButtons();
+  if (hasUrl(env("CHANNEL_URL"))) rows.push([{ text: "📢 Join Telegram Channel", url: env("CHANNEL_URL") }]);
+  return { inline_keyboard: rows.length ? rows : [[{ text: "📢 Join Telegram Channel", url: env("CHANNEL_URL", "https://t.me/Gemassistbuilder_Bot") }]] };
+}
+
 function welcomeKeyboard() {
-  return {
-    inline_keyboard: [
-      [{ text: "📢 Join Channel", url: env("CHANNEL_URL") }],
-      [{ text: "✅ I Joined — Send My Guide", callback_data: "verify_join" }]
-    ]
-  };
+  const rows = [
+    [{ text: "📢 Join Telegram Channel", url: env("CHANNEL_URL") }],
+    [{ text: "✅ I Joined — Send My Guide", callback_data: "verify_join" }],
+    [{ text: "🌍 Follow Our Social Pages", callback_data: "show_socials" }]
+  ];
+  return { inline_keyboard: rows };
 }
 
 async function sendWelcome(chatId, firstName = "") {
@@ -54,10 +79,23 @@ async function sendWelcome(chatId, firstName = "") {
       `You’re 30 seconds away from getting your FREE guide:\n\n` +
       `📕 <b>50 Free Tools & Opportunities Every Creator Should Know</b>\n\n` +
       `Inside you’ll find AI tools, free resources, productivity tools, and opportunity sources.\n\n` +
-      `👉 Step 1: Join our channel\n` +
-      `👉 Step 2: Tap <b>I Joined ✅</b> below\n\n` +
+      `👉 Step 1: Join our Telegram channel\n` +
+      `👉 Step 2: Tap <b>I Joined ✅</b> below\n` +
+      `👉 Step 3: Follow our X/Twitter, TikTok, and Facebook pages for extra updates\n\n` +
       `Your guide will arrive instantly. 🚀`,
     reply_markup: welcomeKeyboard()
+  });
+}
+
+async function sendSocialHub(chatId) {
+  return telegram("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text:
+      `🌍 <b>Follow GemAssist Everywhere</b>\n\n` +
+      `Stay connected across our platforms for updates, tools, opportunities, service announcements, and short-form tips.\n\n` +
+      `Use the buttons below to follow the pages you use most.`,
+    reply_markup: socialKeyboard()
   });
 }
 
@@ -93,6 +131,15 @@ async function sendGuide(chatId, user) {
     verified: true,
     pdf_sent: true
   });
+
+  await telegram("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text:
+      `🚀 <b>Next step: follow GemAssist on other platforms</b>\n\n` +
+      `Telegram is where you get the full drops, but X/Twitter, TikTok, and Facebook help you catch quick updates, short tips, and public announcements.`,
+    reply_markup: socialKeyboard()
+  });
 }
 
 async function sendNotJoined(chatId) {
@@ -104,6 +151,17 @@ async function sendNotJoined(chatId) {
       `Tap the button below to join, then come back and tap <b>I Joined ✅</b>.\n\n` +
       `Your guide is waiting 🎁`,
     reply_markup: welcomeKeyboard()
+  });
+}
+
+async function sendServices(chatId) {
+  return telegram("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text:
+      `🛠 <b>GemAssist Services</b>\n\n` +
+      `We help with digital systems, automation setup, growth funnels, business support workflows, content systems, and online presence improvement.\n\n` +
+      `Use /quote to request help or /socials to follow our pages.`
   });
 }
 
@@ -127,21 +185,29 @@ export default async function handler(req, res) {
 
       if (text.startsWith("/start") || text.startsWith("/free_guide") || text.startsWith("/subscribe")) {
         await sendWelcome(chatId, msg.from?.first_name);
+      } else if (text.startsWith("/socials") || text.startsWith("/follow") || text.startsWith("/twitter") || text.startsWith("/tiktok") || text.startsWith("/facebook")) {
+        await sendSocialHub(chatId);
       } else if (text.startsWith("/latest_tools") || text.startsWith("/opportunities")) {
         await telegram("sendMessage", {
           chat_id: chatId,
-          text: "Join the channel for daily useful tools, AI resources, opportunities, and productivity tips.",
-          reply_markup: welcomeKeyboard()
+          parse_mode: "HTML",
+          text: "Join the channel for daily useful tools, AI resources, opportunities, and productivity tips. You can also follow our social pages below.",
+          reply_markup: socialKeyboard()
         });
-      } else if (text.startsWith("/services") || text.startsWith("/quote") || text.startsWith("/contact") || text.startsWith("/about")) {
+      } else if (text.startsWith("/services")) {
+        await sendServices(chatId);
+      } else if (text.startsWith("/quote") || text.startsWith("/contact") || text.startsWith("/about")) {
         await telegram("sendMessage", {
           chat_id: chatId,
-          text: "Thanks for reaching out. Use /start to unlock the free guide and stay connected with GemAssist updates."
+          parse_mode: "HTML",
+          text:
+            `Thanks for reaching out.\n\n` +
+            `Use /start to unlock the free guide, /socials to follow our pages, or reply with what service you need.`
         });
       } else {
         await telegram("sendMessage", {
           chat_id: chatId,
-          text: "Use /start to unlock the free guide and join the channel.",
+          text: "Use /start to unlock the free guide, /subscribe to join the channel, or /socials to follow our pages.",
           reply_markup: welcomeKeyboard()
         });
       }
@@ -162,6 +228,10 @@ export default async function handler(req, res) {
           if (verified) await sendGuide(chatId, user);
           else await sendNotJoined(chatId);
         }
+      }
+
+      if (cb.data === "show_socials") {
+        await sendSocialHub(chatId);
       }
     }
 
