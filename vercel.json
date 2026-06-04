@@ -6,6 +6,9 @@
     },
     "api/set-webhook.js": {
       "maxDuration": 10
+    },
+    "api/guide.js": {
+      "maxDuration": 10
     }
   },
   "routes": [
@@ -16,6 +19,14 @@
     {
       "src": "/api/set-webhook",
       "dest": "/api/set-webhook.js"
+    },
+    {
+      "src": "/guide.pdf",
+      "dest": "/api/guide.js"
+    },
+    {
+      "src": "/api/guide",
+      "dest": "/api/guide.js"
     },
     {
       "src": "/(.*)",
