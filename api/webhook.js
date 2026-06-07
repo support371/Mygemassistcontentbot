@@ -1,243 +1,103 @@
-const API = (token) => `https://api.telegram.org/bot${token}`;
+const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || "";
+const CHANNEL_INVITE = "https://t.me/+hlefNslWU7c5NjM0";
+const CHANNEL_LINK = "https://t.me/mycybersecureWealthsolution";
+const WEBSITE = "https://gemcybersecurityassist.com";
+const EMAIL = "Marketing@gemcybersecurityassist.com";
+const PHONE = "+1 (401) 702-2460";
 
-function env(name, fallback = "") {
-  return process.env[name] || fallback;
-}
-
-function hasUrl(value) {
-  return Boolean(value && value.startsWith("http"));
-}
-
-async function telegram(method, payload) {
-  const token = env("BOT_TOKEN");
-  if (!token) throw new Error("BOT_TOKEN is missing");
-
-  const res = await fetch(`${API(token)}/${method}`, {
+async function send(chatId, text, extra = {}) {
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  const data = await res.json();
-  if (!data.ok) console.error("Telegram API error", method, data);
-  return data;
-}
-
-async function saveLead(lead) {
-  const url = env("GOOGLE_APPS_SCRIPT_WEBHOOK");
-  if (!url) return;
-
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(lead)
-    });
-  } catch (err) {
-    console.error("Lead save failed", err.message);
-  }
-}
-
-function socialButtons() {
-  const rows = [];
-  const twitterUrl = env("TWITTER_URL");
-  const tiktokUrl = env("TIKTOK_URL");
-  const facebookUrl = env("FACEBOOK_URL");
-  const instagramUrl = env("INSTAGRAM_URL");
-
-  if (hasUrl(twitterUrl)) rows.push([{ text: "𝕏 Follow on X / Twitter", url: twitterUrl }]);
-  if (hasUrl(tiktokUrl)) rows.push([{ text: "🎵 Follow on TikTok", url: tiktokUrl }]);
-  if (hasUrl(facebookUrl)) rows.push([{ text: "📘 Follow Facebook Page", url: facebookUrl }]);
-  if (hasUrl(instagramUrl)) rows.push([{ text: "📸 Follow Instagram", url: instagramUrl }]);
-
-  return rows;
-}
-
-function socialKeyboard() {
-  const rows = socialButtons();
-  if (hasUrl(env("CHANNEL_URL"))) rows.push([{ text: "📢 Join Telegram Channel", url: env("CHANNEL_URL") }]);
-  return { inline_keyboard: rows.length ? rows : [[{ text: "📢 Join Telegram Channel", url: env("CHANNEL_URL", "https://t.me/Gemassistbuilder_Bot") }]] };
-}
-
-function welcomeKeyboard() {
-  const rows = [
-    [{ text: "📢 Join Telegram Channel", url: env("CHANNEL_URL") }],
-    [{ text: "✅ I Joined — Send My Guide", callback_data: "verify_join" }],
-    [{ text: "🌍 Follow Our Social Pages", callback_data: "show_socials" }]
-  ];
-  return { inline_keyboard: rows };
-}
-
-async function sendWelcome(chatId, firstName = "") {
-  const name = firstName ? ` ${firstName}` : "";
-
-  return telegram("sendMessage", {
-    chat_id: chatId,
-    parse_mode: "HTML",
-    text:
-      `👋 Welcome${name}!\n\n` +
-      `You’re 30 seconds away from getting your FREE guide:\n\n` +
-      `📕 <b>50 Free Tools & Opportunities Every Creator Should Know</b>\n\n` +
-      `Inside you’ll find AI tools, free resources, productivity tools, and opportunity sources.\n\n` +
-      `👉 Step 1: Join our Telegram channel\n` +
-      `👉 Step 2: Tap <b>I Joined ✅</b> below\n` +
-      `👉 Step 3: Follow our X/Twitter, TikTok, and Facebook pages for extra updates\n\n` +
-      `Your guide will arrive instantly. 🚀`,
-    reply_markup: welcomeKeyboard()
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: false, ...extra }),
   });
 }
 
-async function sendSocialHub(chatId) {
-  return telegram("sendMessage", {
-    chat_id: chatId,
-    parse_mode: "HTML",
-    text:
-      `🌍 <b>Follow GemAssist Everywhere</b>\n\n` +
-      `Stay connected across our platforms for updates, tools, opportunities, service announcements, and short-form tips.\n\n` +
-      `Use the buttons below to follow the pages you use most.`,
-    reply_markup: socialKeyboard()
-  });
-}
-
-async function verifyUser(userId) {
-  const channelId = env("CHANNEL_ID");
-  const result = await telegram("getChatMember", {
-    chat_id: channelId,
-    user_id: userId
-  });
-
-  if (!result.ok) return false;
-  const status = result.result?.status;
-  return ["member", "administrator", "creator"].includes(status);
-}
-
-async function sendGuide(chatId, user) {
-  await telegram("sendMessage", {
-    chat_id: chatId,
-    parse_mode: "HTML",
-    text:
-      `🎉 You’re in! Here’s your free guide.\n\n` +
-      `<b>50 Free Tools & Opportunities Every Creator Should Know</b>\n\n` +
-      `${env("PDF_URL")}\n\n` +
-      `Save it, use it, and stay in the channel for daily useful drops. 🚀`
-  });
-
-  await saveLead({
-    user_id: user.id,
-    first_name: user.first_name || "",
-    username: user.username || "",
-    source: "telegram_bot",
-    joined_at: new Date().toISOString(),
-    verified: true,
-    pdf_sent: true
-  });
-
-  await telegram("sendMessage", {
-    chat_id: chatId,
-    parse_mode: "HTML",
-    text:
-      `🚀 <b>Next step: follow GemAssist on other platforms</b>\n\n` +
-      `Telegram is where you get the full drops, but X/Twitter, TikTok, and Facebook help you catch quick updates, short tips, and public announcements.`,
-    reply_markup: socialKeyboard()
-  });
-}
-
-async function sendNotJoined(chatId) {
-  return telegram("sendMessage", {
-    chat_id: chatId,
-    parse_mode: "HTML",
-    text:
-      `Hmm, it looks like you haven’t joined yet 🤔\n\n` +
-      `Tap the button below to join, then come back and tap <b>I Joined ✅</b>.\n\n` +
-      `Your guide is waiting 🎁`,
-    reply_markup: welcomeKeyboard()
-  });
-}
-
-async function sendServices(chatId) {
-  return telegram("sendMessage", {
-    chat_id: chatId,
-    parse_mode: "HTML",
-    text:
-      `🛠 <b>GemAssist Services</b>\n\n` +
-      `We help with digital systems, automation setup, growth funnels, business support workflows, content systems, and online presence improvement.\n\n` +
-      `Use /quote to request help or /socials to follow our pages.`
-  });
-}
+const MENU = {
+  reply_markup: {
+    keyboard: [
+      [{ text: "🔐 Threat Intel" }, { text: "🏠 Real Estate Alerts" }],
+      [{ text: "💼 Services & Pricing" }, { text: "📣 Join Channel" }],
+      [{ text: "🚨 Emergency" }, { text: "📞 Contact Us" }],
+      [{ text: "❓ Help" }],
+    ],
+    resize_keyboard: true,
+  },
+};
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(200).send("GemAssist Telegram webhook is running.");
+  if (req.method === "GET") {
+    return res.status(200).json({ ok: true, status: "GEM Bot Webhook Active", bot: "@Gemassistbuilder_Bot" });
   }
+  if (req.method !== "POST") return res.status(405).end();
 
-  const secret = env("SECRET_TOKEN");
-  if (secret && req.headers["x-telegram-bot-api-secret-token"] !== secret) {
-    return res.status(401).json({ ok: false, error: "Invalid secret token" });
-  }
+  const update = req.body;
+  const msg = update.message || update.edited_message;
+  if (!msg || !msg.text || msg.chat?.type !== "private") return res.status(200).end();
 
-  try {
-    const update = req.body;
+  const chatId = msg.chat.id;
+  const cmd = msg.text.trim().toLowerCase().split("@")[0];
+  const name = msg.from?.first_name || "there";
 
-    if (update.message) {
-      const msg = update.message;
-      const text = msg.text || "";
-      const chatId = msg.chat.id;
+  if (cmd === "/start") {
+    await send(chatId, `<b>Welcome to GEM Cybersecurity Assist, ${name}!</b>\n\nI'm <b>GEM Assistent</b> — your cybersecurity and real estate protection guide.\n\n/intel — Threat briefing\n/realestate — Real estate fraud alerts\n/services — All services and pricing\n/channel — Join our intelligence channel\n/emergency — Security incident response\n/contact — Reach our team\n/help — Full command list\n\n<a href="${CHANNEL_INVITE}">Join our free daily intelligence channel</a>`, MENU);
 
-      if (text.startsWith("/start") || text.startsWith("/free_guide") || text.startsWith("/subscribe")) {
-        await sendWelcome(chatId, msg.from?.first_name);
-      } else if (text.startsWith("/socials") || text.startsWith("/follow") || text.startsWith("/twitter") || text.startsWith("/tiktok") || text.startsWith("/facebook")) {
-        await sendSocialHub(chatId);
-      } else if (text.startsWith("/latest_tools") || text.startsWith("/opportunities")) {
-        await telegram("sendMessage", {
-          chat_id: chatId,
-          parse_mode: "HTML",
-          text: "Join the channel for daily useful tools, AI resources, opportunities, and productivity tips. You can also follow our social pages below.",
-          reply_markup: socialKeyboard()
-        });
-      } else if (text.startsWith("/services")) {
-        await sendServices(chatId);
-      } else if (text.startsWith("/quote") || text.startsWith("/contact") || text.startsWith("/about")) {
-        await telegram("sendMessage", {
-          chat_id: chatId,
-          parse_mode: "HTML",
-          text:
-            `Thanks for reaching out.\n\n` +
-            `Use /start to unlock the free guide, /socials to follow our pages, or reply with what service you need.`
-        });
-      } else {
-        await telegram("sendMessage", {
-          chat_id: chatId,
-          text: "Use /start to unlock the free guide, /subscribe to join the channel, or /socials to follow our pages.",
-          reply_markup: welcomeKeyboard()
-        });
-      }
+  } else if (["/help", "/commands"].includes(cmd) || cmd.includes("help")) {
+    await send(chatId, `<b>GEM Assistent — All Commands</b>\n\n<b>Intelligence</b>\n/intel — Threat briefing\n/realestate — Real estate fraud alerts\n\n<b>Services</b>\n/services — All services and pricing\n/endpoint — Endpoint Shield $299/yr\n/phishing — Phishing Defense $199/yr\n/vault — Compliance Vault $499/yr\n/threatdash — Threat Intel Dashboard $399/yr\n/suite — Full bundle $799/yr\n\n<b>Support</b>\n/channel — Join our channel\n/about — About GEM\n/contact — Contact us\n/emergency — Incident response\n/quote — Request a quote\n/free_guide — Free security guide\n/sitestatus — Check website status`);
+
+  } else if (cmd === "/services" || msg.text.includes("Services")) {
+    await send(chatId, `<b>GEM Services and Pricing</b>\n\n<b>Annual Software Subscriptions</b>\n1. Endpoint Shield — <b>$299/yr</b>\n2. Phishing Defense Toolkit — <b>$199/yr</b>\n3. Compliance Vault — <b>$499/yr</b>\n4. Threat Intel Dashboard — <b>$399/yr</b>\n5. Security Starter Suite — <b>$799/yr</b>\n\n<b>Professional Services</b>\n• Security Readiness Review — from $1,500\n• Compliance Evidence Sprint — from $2,500\n• Executive Security Reporting — $750/mo\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n<a href="${WEBSITE}">${WEBSITE}</a>`);
+
+  } else if (cmd === "/intel" || cmd === "/threats" || msg.text.includes("Threat Intel")) {
+    await send(chatId, `<b>GEM Threat Intel — June 2026</b>\n\n<b>CRITICAL</b>\n• AI-powered phishing bypassing email filters\n• Ransomware-as-a-Service targeting unpatched SMBs\n• SIM Swap surge — 40% increase in carrier fraud\n\n<b>HIGH PRIORITY</b>\n• Cloud misconfiguration exploits\n• Supply chain attacks on npm/PyPI packages\n• Deepfake voice fraud for wire transfer auth\n\n<b>WATCH LIST</b>\n• IoT botnets on smart office devices\n• QR code phishing (quishing)\n• Tax identity fraud post-season\n\nTip: Enable FIDO2 MFA on all business email. SMS 2FA is no longer safe.\n\n<a href="${CHANNEL_LINK}">Subscribe for daily briefings</a>`);
+
+  } else if (cmd === "/realestate" || msg.text.includes("Real Estate")) {
+    await send(chatId, `<b>Real Estate Fraud Alerts</b>\n\n<b>Wire Fraud</b>\nScammers intercept closing emails with fake wire instructions. Always verify by phone — never email alone.\n\n<b>Title Fraud</b>\nCriminals forge deed transfers using stolen identity. Monitor property records quarterly.\n\n<b>Rental Scams</b>\nFake listings, below-market price, Zelle deposit required. Always view in person.\n\n<b>Foreclosure Relief Scams</b>\nFake rescue companies charging upfront fees. HUD counselors never charge first.\n\nNever wire based on email alone.\nVerify routing numbers by phone on official documents.\n\nPhone: ${PHONE}`);
+
+  } else if (cmd === "/channel" || msg.text.includes("Join Channel")) {
+    await send(chatId, `<b>Join Our Free Intelligence Channel</b>\n\nDaily threat briefings (7 AM ET)\nReal estate fraud alerts\nFinancial scam warnings\nGEM security tips\nWeekly intel digest\n\n<a href="${CHANNEL_INVITE}">Join @mycybersecureWealthsolution now</a>\n\nAlready a member? Share this bot with a friend:\nhttps://t.me/Gemassistbuilder_Bot`);
+
+  } else if (cmd === "/about") {
+    await send(chatId, `<b>About GEM Cybersecurity Assist</b>\n\nHelping businesses operationalize defensive cybersecurity through practical software, evidence workflows, and compliance-ready operations.\n\nGEM Cybersecurity and Monitoring Assist\nAlliance Trust Realty\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n<a href="${WEBSITE}">${WEBSITE}</a>`);
+
+  } else if (cmd === "/emergency" || msg.text.includes("Emergency")) {
+    await send(chatId, `<b>Security Incident Response</b>\n\n<b>Step 1 — Contain</b>\nDisconnect affected devices. Do NOT power off — preserve evidence.\n\n<b>Step 2 — Assess</b>\nDocument what systems and data are affected with timestamps.\n\n<b>Step 3 — Notify</b>\n• IT team immediately\n• Legal if customer data involved\n• FBI IC3: ic3.gov for financial fraud\n\n<b>Step 4 — Contact GEM</b>\nPhone: <b>${PHONE}</b>\nEmail: ${EMAIL}\n\nAct immediately. Every minute counts.`);
+
+  } else if (cmd === "/contact" || msg.text.includes("Contact")) {
+    await send(chatId, `<b>Contact GEM Cybersecurity Assist</b>\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n<a href="${WEBSITE}">${WEBSITE}</a>\nFax: 855-673-2062\nAddress: 444 Alaska Ave, Torrance, CA 90503\n\nHours: Mon–Fri 9AM–6PM ET\nEmergency line: 24/7`);
+
+  } else if (cmd === "/quote") {
+    await send(chatId, `<b>Request a Quote</b>\n\nSend us:\n1. Business name and industry\n2. Number of employees and devices\n3. Services needed\n4. Compliance requirements (SOC 2, HIPAA, etc.)\n5. Budget range\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n\nAll quotes free. Response within 1 business day.`);
+
+  } else if (cmd === "/free_guide") {
+    await send(chatId, `<b>Free Cybersecurity Starter Guide</b>\n\n5 Actions to Take Today:\n\n1. Enable MFA on email, banking, cloud — use authenticator app, not SMS\n2. Audit admin access — remove anyone who no longer needs it\n3. Test backups — restore a file today to confirm it works\n4. Patch everything — 60% of breaches exploit known vulnerabilities\n5. Write one security policy — even one page builds credibility\n\nEmail ${EMAIL} with subject "Free Guide" for the full 50-action checklist.\n\n<a href="${CHANNEL_LINK}">Join our daily intelligence channel</a>`);
+
+  } else if (cmd === "/endpoint") {
+    await send(chatId, `<b>Endpoint Shield — $299/year</b>\n\nDevice posture tracking, baseline visibility, executive reporting.\n\n✅ Endpoint posture dashboard\n✅ Device baseline checklist\n✅ Risk register workflow\n✅ Weekly executive export\n\nEmail: ${EMAIL}\nPhone: ${PHONE}`);
+
+  } else if (cmd === "/phishing") {
+    await send(chatId, `<b>Phishing Defense Toolkit — $199/year</b>\n\nCampaign planning, user risk tracking, awareness reporting.\n\n✅ Phishing campaign planner\n✅ User risk tracker\n✅ Training status dashboard\n✅ Executive awareness reports\n\nEmail: ${EMAIL}\nPhone: ${PHONE}`);
+
+  } else if (cmd === "/vault") {
+    await send(chatId, `<b>Compliance Vault — $499/year</b>\n\nEvidence register, control mapping, audit readiness.\n\n✅ Policy and control library\n✅ Evidence register\n✅ Audit readiness tracker\n✅ Owner and due-date workflow\n\nEmail: ${EMAIL}\nPhone: ${PHONE}`);
+
+  } else if (cmd === "/threatdash") {
+    await send(chatId, `<b>Threat Intel Dashboard — $399/year</b>\n\nRisk watchlists, signal tracking, executive digests.\n\n✅ Threat watchlist workspace\n✅ Risk signal dashboard\n✅ Monthly executive digest\n✅ Security priority tracker\n\nEmail: ${EMAIL}\nPhone: ${PHONE}`);
+
+  } else if (cmd === "/suite") {
+    await send(chatId, `<b>Security Starter Suite — $799/year — Best Value</b>\n\nAll 4 tools bundled. Save $597.\n\n✅ Endpoint Shield ($299)\n✅ Phishing Defense ($199)\n✅ Compliance Vault ($499)\n✅ Threat Intel Dashboard ($399)\n\nTotal value $1,396. You pay $799.\n\nEmail: ${EMAIL}\nPhone: ${PHONE}`);
+
+  } else if (cmd === "/sitestatus") {
+    try {
+      const r = await fetch("https://gemcybersecurityassist.com", { method: "HEAD" });
+      await send(chatId, r.ok ? `gemcybersecurityassist.com is ONLINE — HTTP ${r.status}` : `gemcybersecurityassist.com returned status ${r.status}`);
+    } catch {
+      await send(chatId, `gemcybersecurityassist.com appears offline. Monitoring 24/7.`);
     }
 
-    if (update.callback_query) {
-      const cb = update.callback_query;
-      const chatId = cb.message.chat.id;
-      const user = cb.from;
-
-      await telegram("answerCallbackQuery", { callback_query_id: cb.id });
-
-      if (cb.data === "verify_join") {
-        if (user.is_bot) {
-          await telegram("sendMessage", { chat_id: chatId, text: "Bot accounts cannot unlock the guide." });
-        } else {
-          const verified = await verifyUser(user.id);
-          if (verified) await sendGuide(chatId, user);
-          else await sendNotJoined(chatId);
-        }
-      }
-
-      if (cb.data === "show_socials") {
-        await sendSocialHub(chatId);
-      }
-    }
-
-    return res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    return res.status(200).json({ ok: false, error: err.message });
+  } else {
+    await send(chatId, `Hi ${name}! I didn't recognize that command.\n\nType /help to see all available commands, or tap a button from the menu below.\n\n<a href="${CHANNEL_INVITE}">Join our free intelligence channel</a>`, MENU);
   }
+
+  return res.status(200).end();
 }
