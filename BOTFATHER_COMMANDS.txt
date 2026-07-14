@@ -1,9 +1,20 @@
-start - Welcome and get your free guide
-subscribe - Join our Telegram channel
-free_guide - Get the free tools and opportunities guide
-latest_tools - Latest useful tools and resources
-opportunities - Latest opportunities and free resources
-services - View our service offerings
+start - Welcome and begin the voluntary join flow
+help - View all bot commands
+intel - View defensive threat priorities
+realestate - View real estate fraud alerts
+services - View services and pricing
+channel - Join the intelligence channel
+subscribe - Join the intelligence channel
+free_guide - Verify membership and open the free guide
+latest_tools - View recommended starter tools
+opportunities - View opportunity resources
+endpoint - View Endpoint Shield
+phishing - View Phishing Defense Toolkit
+vault - View Compliance Vault
+threatdash - View Threat Intel Dashboard
+suite - View the Security Starter Suite
 quote - Request a service quote
-contact - Contact information
-about - About GEM and Alliance Trust Realty
+contact - Contact GEM Cybersecurity Assist
+about - About GEM Cybersecurity Assist
+emergency - View incident response steps
+sitestatus - Check the GEM website status
