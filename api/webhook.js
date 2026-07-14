@@ -1,21 +1,81 @@
-// GEM Cybersecurity Assist — Telegram Bot Webhook v3
-const CHANNEL_INVITE = "https://t.me/+hlefNslWU7c5NjM0";
-const CHANNEL_LINK = "https://t.me/mycybersecureWealthsolution";
-const WEBSITE = "https://gemcybersecurityassist.com";
-const EMAIL = "Marketing@gemcybersecurityassist.com";
-const PHONE = "+1 (401) 702-2460";
+import { timingSafeEqual } from "node:crypto";
+
+const VERSION = "4.0.0";
+const WEBSITE = process.env.WEBSITE_URL || "https://gemcybersecurityassist.com";
+const EMAIL = process.env.CONTACT_EMAIL || "Marketing@gemcybersecurityassist.com";
+const PHONE = process.env.CONTACT_PHONE || "+1 (401) 702-2460";
+const CHANNEL_URL = process.env.CHANNEL_URL || "https://t.me/mycybersecureWealthsolution";
+const CHANNEL_ID = process.env.CHANNEL_ID || "";
+const GOOGLE_APPS_SCRIPT_WEBHOOK = process.env.GOOGLE_APPS_SCRIPT_WEBHOOK || "";
+
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left || ""));
+  const b = Buffer.from(String(right || ""));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 function getBotToken() {
-  return process.env.BOT_TOKEN_2 || process.env.BOT_TOKEN || "8327316373:AAEXeisn6svbs6JHtlIWBon7YOQzbu7upq4";
+  const token = process.env.BOT_TOKEN;
+  if (!token) throw new Error("BOT_TOKEN is not configured");
+  return token;
+}
+
+function requestBaseUrl(req) {
+  const configured = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+  if (configured) return configured;
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  return `${proto}://${host}`;
+}
+
+async function telegram(method, payload = {}) {
+  const response = await fetch(`https://api.telegram.org/bot${getBotToken()}/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(`Telegram ${method} failed: ${data.description || response.statusText}`);
+  }
+  return data.result;
 }
 
 async function send(chatId, text, extra = {}) {
-  const tok = getBotToken();
-  await fetch(`https://api.telegram.org/bot${tok}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: false, ...extra }),
+  return telegram("sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: false,
+    ...extra,
   });
+}
+
+async function answerCallbackQuery(callbackQueryId, text) {
+  return telegram("answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    text,
+    show_alert: false,
+  });
+}
+
+function joinKeyboard() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📣 Join the intelligence channel", url: CHANNEL_URL }],
+        [{ text: "✅ Verify membership", callback_data: "verify_membership" }],
+      ],
+    },
+  };
 }
 
 const MENU = {
@@ -23,87 +83,158 @@ const MENU = {
     keyboard: [
       [{ text: "🔐 Threat Intel" }, { text: "🏠 Real Estate Alerts" }],
       [{ text: "💼 Services & Pricing" }, { text: "📣 Join Channel" }],
-      [{ text: "🚨 Emergency" }, { text: "📞 Contact Us" }],
-      [{ text: "❓ Help" }],
+      [{ text: "🎁 Free Guide" }, { text: "📞 Contact Us" }],
+      [{ text: "🚨 Emergency" }, { text: "❓ Help" }],
     ],
     resize_keyboard: true,
   },
 };
 
+async function getMembership(userId) {
+  if (!CHANNEL_ID) {
+    return { verified: false, configured: false, reason: "CHANNEL_ID is not configured" };
+  }
+  try {
+    const member = await telegram("getChatMember", { chat_id: CHANNEL_ID, user_id: userId });
+    const verified = ["creator", "administrator", "member"].includes(member.status)
+      || (member.status === "restricted" && member.is_member === true);
+    return { verified, configured: true, status: member.status };
+  } catch (error) {
+    return { verified: false, configured: true, reason: error.message };
+  }
+}
+
+async function saveVerifiedLead(user) {
+  if (!GOOGLE_APPS_SCRIPT_WEBHOOK) return;
+  try {
+    await fetch(GOOGLE_APPS_SCRIPT_WEBHOOK, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "telegram",
+        telegram_user_id: user.id,
+        username: user.username || "",
+        first_name: user.first_name || "",
+        last_name: user.last_name || "",
+        verified_at: new Date().toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.warn("Lead capture failed", error.message);
+  }
+}
+
+async function deliverGuide(req, chatId, user) {
+  const membership = await getMembership(user.id);
+  if (!membership.configured) {
+    await send(chatId, "Membership verification is not configured yet. Please contact GEM support.");
+    return;
+  }
+  if (!membership.verified) {
+    await send(chatId, "Join the channel first, then tap <b>Verify membership</b> to unlock the guide.", joinKeyboard());
+    return;
+  }
+  await saveVerifiedLead(user);
+  const guideUrl = process.env.PDF_URL || `${requestBaseUrl(req)}/guide.pdf`;
+  await send(chatId, `<b>Membership verified.</b>\n\n<a href="${escapeHtml(guideUrl)}">Open the 50 Free Tools & Opportunities guide</a>`, MENU);
+}
+
+function isValidWebhookRequest(req) {
+  const configuredSecret = process.env.WEBHOOK_SECRET || process.env.SECRET_TOKEN;
+  if (!configuredSecret) return false;
+  return safeEqual(req.headers["x-telegram-bot-api-secret-token"], configuredSecret);
+}
+
 export default async function handler(req, res) {
   if (req.method === "GET") {
-    return res.status(200).json({ ok: true, status: "GEM Bot Webhook Active", bot: "@gemassistmedia_bot" });
+    return res.status(200).json({ ok: true, service: "GemAssist Telegram Bot", version: VERSION, mode: "opt-in" });
   }
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "GET, POST");
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+  if (!isValidWebhookRequest(req)) {
+    return res.status(401).json({ ok: false, error: "Invalid webhook secret" });
+  }
 
-  const update = req.body;
-  const msg = update.message || update.edited_message;
-  if (!msg || !msg.text || msg.chat?.type !== "private") return res.status(200).end();
-
-  const chatId = msg.chat.id;
-  const cmd = (msg.text || "").trim().toLowerCase().split("@")[0];
-  const t = (msg.text || "").toLowerCase();
-  const name = msg.from?.first_name || "there";
-
-  if (cmd === "/start") {
-    await send(chatId, `<b>Welcome to GEM Cybersecurity Assist, ${name}!</b>\n\nI\'m <b>GEM Assistent</b> \u2014 your cybersecurity and real estate protection guide.\n\n/intel \u2014 Threat briefing\n/realestate \u2014 Real estate fraud alerts\n/services \u2014 All services and pricing\n/channel \u2014 Join our intelligence channel\n/emergency \u2014 Security incident response\n/contact \u2014 Reach our team\n/help \u2014 Full command list\n\n<a href="${CHANNEL_INVITE}">Join our free daily intelligence channel</a>`, MENU);
-
-  } else if (["/help", "/commands"].includes(cmd)) {
-    await send(chatId, `<b>GEM Assistent \u2014 All Commands</b>\n\n<b>Intelligence</b>\n/intel \u2014 Threat briefing\n/realestate \u2014 Fraud alerts\n\n<b>Services</b>\n/services \u2014 All services and pricing\n/endpoint \u2014 Endpoint Shield $299/yr\n/phishing \u2014 Phishing Defense $199/yr\n/vault \u2014 Compliance Vault $499/yr\n/threatdash \u2014 Threat Intel Dashboard $399/yr\n/suite \u2014 Full bundle $799/yr\n\n<b>Support</b>\n/channel \u2014 Join our channel\n/about \u2014 About GEM\n/contact \u2014 Contact us\n/emergency \u2014 Incident response\n/quote \u2014 Get a quote\n/free_guide \u2014 Free security guide\n/sitestatus \u2014 Check website`);
-
-  } else if (cmd === "/services" || t.includes("services & pricing")) {
-    await send(chatId, `<b>GEM Services and Pricing</b>\n\n<b>Annual Software Subscriptions</b>\n1. Endpoint Shield \u2014 <b>$299/yr</b>\n2. Phishing Defense Toolkit \u2014 <b>$199/yr</b>\n3. Compliance Vault \u2014 <b>$499/yr</b>\n4. Threat Intel Dashboard \u2014 <b>$399/yr</b>\n5. Security Starter Suite \u2014 <b>$799/yr</b>\n\n<b>Professional Services</b>\n\u2022 Security Readiness Review \u2014 from $1,500\n\u2022 Compliance Evidence Sprint \u2014 from $2,500\n\u2022 Executive Security Reporting \u2014 $750/mo\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n<a href="${WEBSITE}">${WEBSITE}</a>`);
-
-  } else if (["/intel", "/threats"].includes(cmd) || t.includes("threat intel")) {
-    await send(chatId, `<b>GEM Threat Intel \u2014 June 2026</b>\n\n<b>CRITICAL</b>\n\u2022 AI-powered phishing bypassing email filters\n\u2022 Ransomware-as-a-Service targeting unpatched SMBs\n\u2022 SIM Swap surge \u2014 40% increase in carrier fraud\n\n<b>HIGH PRIORITY</b>\n\u2022 Cloud misconfiguration exploits\n\u2022 Supply chain attacks on npm/PyPI\n\u2022 Deepfake voice fraud for wire transfers\n\n<b>WATCH LIST</b>\n\u2022 IoT botnets on smart office devices\n\u2022 QR code phishing (quishing)\n\u2022 Tax identity fraud post-season\n\nTip: Enable FIDO2 MFA on all business email.\n\n<a href="${CHANNEL_LINK}">Subscribe for daily briefings</a>`);
-
-  } else if (cmd === "/realestate" || t.includes("real estate")) {
-    await send(chatId, `<b>Real Estate Fraud Alerts</b>\n\n<b>Wire Fraud</b>\nScammers send fake wire instructions via email. Verify by phone \u2014 never email alone.\n\n<b>Title Fraud</b>\nCriminals forge deed transfers. Monitor property records quarterly.\n\n<b>Rental Scams</b>\nFake listings, below-market price, Zelle deposit required.\n\n<b>Foreclosure Scams</b>\nFake rescue companies charging upfront fees.\n\nNever wire based on email alone. Verify routing by phone.\n\nPhone: ${PHONE}`);
-
-  } else if (cmd === "/channel" || t.includes("join channel")) {
-    await send(chatId, `<b>Join Our Free Intelligence Channel</b>\n\nDaily threat briefings (7 AM ET)\nReal estate fraud alerts\nFinancial scam warnings\nGEM security tips\nWeekly intel digest\n\n<a href="${CHANNEL_INVITE}">Join @mycybersecureWealthsolution now</a>\n\nShare this bot with a friend:\nhttps://t.me/gemassistmedia_bot`);
-
-  } else if (cmd === "/about") {
-    await send(chatId, `<b>About GEM Cybersecurity Assist</b>\n\nHelping businesses operationalize defensive cybersecurity through practical software, evidence workflows, and compliance-ready operations.\n\nGEM Cybersecurity and Monitoring Assist\nAlliance Trust Realty\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n<a href="${WEBSITE}">${WEBSITE}</a>`);
-
-  } else if (cmd === "/emergency" || t.includes("emergency")) {
-    await send(chatId, `<b>Security Incident Response</b>\n\n<b>Step 1 \u2014 Contain</b>\nDisconnect affected devices. Do NOT power off.\n\n<b>Step 2 \u2014 Assess</b>\nDocument what is affected with timestamps.\n\n<b>Step 3 \u2014 Notify</b>\n\u2022 IT team immediately\n\u2022 Legal if customer data involved\n\u2022 FBI IC3: ic3.gov\n\n<b>Step 4 \u2014 Contact GEM</b>\nPhone: <b>${PHONE}</b>\nEmail: ${EMAIL}\n\nAct immediately. Every minute counts.`);
-
-  } else if (cmd === "/contact" || t.includes("contact us")) {
-    await send(chatId, `<b>Contact GEM Cybersecurity Assist</b>\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n<a href="${WEBSITE}">${WEBSITE}</a>\nFax: 855-673-2062\n444 Alaska Ave, Torrance, CA 90503\n\nHours: Mon\u2013Fri 9AM\u20136PM ET\nEmergency: 24/7`);
-
-  } else if (cmd === "/quote") {
-    await send(chatId, `<b>Request a Quote</b>\n\nSend us:\n1. Business name and industry\n2. Number of employees and devices\n3. Services needed\n4. Compliance requirements\n5. Budget range\n\nEmail: ${EMAIL}\nPhone: ${PHONE}\n\nAll quotes free. Response within 1 business day.`);
-
-  } else if (cmd === "/free_guide") {
-    await send(chatId, `<b>Free Cybersecurity Starter Guide</b>\n\n1. Enable MFA \u2014 authenticator app, not SMS\n2. Audit admin access \u2014 remove who no longer needs it\n3. Test backups \u2014 restore a file today\n4. Patch everything \u2014 60% of breaches exploit known CVEs\n5. Write one security policy \u2014 builds credibility\n\nEmail ${EMAIL} with subject \"Free Guide\" for the full 50-action checklist.\n\n<a href="${CHANNEL_LINK}">Join our daily channel</a>`);
-
-  } else if (cmd === "/endpoint") {
-    await send(chatId, `<b>Endpoint Shield \u2014 $299/year</b>\n\nDevice posture tracking, baseline visibility, executive reporting.\n\u2705 Endpoint posture dashboard\n\u2705 Device baseline checklist\n\u2705 Risk register workflow\n\u2705 Weekly executive export\n\nEmail: ${EMAIL} | Phone: ${PHONE}`);
-
-  } else if (cmd === "/phishing") {
-    await send(chatId, `<b>Phishing Defense Toolkit \u2014 $199/year</b>\n\nCampaign planning, user risk tracking, awareness reporting.\n\u2705 Phishing campaign planner\n\u2705 User risk tracker\n\u2705 Training status dashboard\n\u2705 Executive awareness reports\n\nEmail: ${EMAIL} | Phone: ${PHONE}`);
-
-  } else if (cmd === "/vault") {
-    await send(chatId, `<b>Compliance Vault \u2014 $499/year</b>\n\nEvidence register, control mapping, audit readiness.\n\u2705 Policy and control library\n\u2705 Evidence register\n\u2705 Audit readiness tracker\n\u2705 Owner and due-date workflow\n\nEmail: ${EMAIL} | Phone: ${PHONE}`);
-
-  } else if (cmd === "/threatdash") {
-    await send(chatId, `<b>Threat Intel Dashboard \u2014 $399/year</b>\n\nRisk watchlists, signal tracking, executive digests.\n\u2705 Threat watchlist workspace\n\u2705 Risk signal dashboard\n\u2705 Monthly executive digest\n\u2705 Security priority tracker\n\nEmail: ${EMAIL} | Phone: ${PHONE}`);
-
-  } else if (cmd === "/suite") {
-    await send(chatId, `<b>Security Starter Suite \u2014 $799/year \u2014 Best Value</b>\n\nAll 4 tools bundled. Save $597.\n\u2705 Endpoint Shield ($299)\n\u2705 Phishing Defense ($199)\n\u2705 Compliance Vault ($499)\n\u2705 Threat Intel Dashboard ($399)\n\nTotal value $1,396. You pay $799.\n\nEmail: ${EMAIL} | Phone: ${PHONE}`);
-
-  } else if (cmd === "/sitestatus") {
-    try {
-      const r = await fetch("https://gemcybersecurityassist.com", { method: "HEAD" });
-      await send(chatId, r.ok ? `gemcybersecurityassist.com is ONLINE \u2014 HTTP ${r.status}` : `gemcybersecurityassist.com returned status ${r.status}`);
-    } catch {
-      await send(chatId, `gemcybersecurityassist.com appears offline. Monitoring 24/7.`);
+  try {
+    const update = req.body || {};
+    if (update.callback_query) {
+      const callback = update.callback_query;
+      const chatId = callback.message?.chat?.id;
+      if (callback.data === "verify_membership" && chatId) {
+        const membership = await getMembership(callback.from.id);
+        if (membership.verified) {
+          await answerCallbackQuery(callback.id, "Membership verified");
+          await deliverGuide(req, chatId, callback.from);
+        } else {
+          await answerCallbackQuery(callback.id, "Membership not found yet");
+          await send(chatId, "I could not verify your membership yet. Join the channel and try again.", joinKeyboard());
+        }
+      }
+      return res.status(200).json({ ok: true });
     }
 
-  } else {
-    await send(chatId, `Hi ${name}! Type /help to see all commands.\n\n<a href="${CHANNEL_INVITE}">Join our free intelligence channel</a>`, MENU);
-  }
+    const msg = update.message || update.edited_message;
+    if (!msg || !msg.text || msg.chat?.type !== "private") return res.status(200).json({ ok: true });
 
-  return res.status(200).end();
+    const chatId = msg.chat.id;
+    const rawText = String(msg.text || "").trim();
+    const command = rawText.toLowerCase().split("@")[0];
+    const text = rawText.toLowerCase();
+    const name = escapeHtml(msg.from?.first_name || "there");
+
+    if (command === "/start") {
+      await send(chatId, `<b>Welcome to GEM Cybersecurity Assist, ${name}.</b>\n\nUse this bot for defensive cybersecurity guidance, real-estate fraud alerts, services, and the free creator guide.\n\nJoin voluntarily, then verify membership to unlock the guide.`, joinKeyboard());
+      await send(chatId, "Use the menu below at any time.", MENU);
+    } else if (["/help", "/commands"].includes(command) || text.includes("help")) {
+      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the guide\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
+    } else if (command === "/services" || text.includes("services & pricing")) {
+      await send(chatId, `<b>GEM Services and Pricing</b>\n\n<b>Annual Software Subscriptions</b>\n1. Endpoint Shield — <b>$299/yr</b>\n2. Phishing Defense Toolkit — <b>$199/yr</b>\n3. Compliance Vault — <b>$499/yr</b>\n4. Threat Intel Dashboard — <b>$399/yr</b>\n5. Security Starter Suite — <b>$799/yr</b>\n\n<b>Professional Services</b>\n• Security Readiness Review — from $1,500\n• Compliance Evidence Sprint — from $2,500\n• Executive Security Reporting — $750/mo\n\nEmail: ${escapeHtml(EMAIL)}\nPhone: ${escapeHtml(PHONE)}\n<a href="${escapeHtml(WEBSITE)}">${escapeHtml(WEBSITE)}</a>`);
+    } else if (["/intel", "/threats"].includes(command) || text.includes("threat intel")) {
+      await send(chatId, `<b>Current Defensive Priorities</b>\n\n• Phishing-resistant MFA for privileged accounts\n• Patch management for internet-facing systems\n• Cloud configuration review and least privilege\n• Tested offline backups and recovery exercises\n• Vendor and software-supply-chain review\n• Wire-transfer verification using a separate channel\n\n<a href="${escapeHtml(CHANNEL_URL)}">Subscribe for defensive briefings</a>`);
+    } else if (command === "/realestate" || text.includes("real estate")) {
+      await send(chatId, `<b>Real Estate Fraud Alerts</b>\n\n<b>Wire Fraud</b>\nVerify all payment instructions using a trusted phone number before sending funds.\n\n<b>Title Fraud</b>\nMonitor property records and investigate unexpected filing notices.\n\n<b>Rental Scams</b>\nConfirm ownership and avoid deposits before independent verification.\n\nPhone: ${escapeHtml(PHONE)}`);
+    } else if (["/channel", "/subscribe"].includes(command) || text.includes("join channel")) {
+      await send(chatId, "Join voluntarily for defensive briefings, fraud alerts, and practical security guidance.", joinKeyboard());
+    } else if (command === "/free_guide" || text.includes("free guide")) {
+      await deliverGuide(req, chatId, msg.from);
+    } else if (command === "/latest_tools") {
+      await send(chatId, `<b>Recommended Starter Tools</b>\n\n• Password manager\n• Authenticator or security key\n• Device and browser update controls\n• Backup and recovery tooling\n• Project tracker for remediation evidence\n\nThe complete creator-resource list is available through /free_guide.`);
+    } else if (command === "/opportunities") {
+      await send(chatId, `<b>Opportunity Resources</b>\n\nUse reputable job boards, official grant portals, verified company career pages, and recognized freelance platforms. Verify the organization and never pay an upfront fee to receive a job or award.`);
+    } else if (command === "/about") {
+      await send(chatId, `<b>About GEM Cybersecurity Assist</b>\n\nHelping organizations operationalize defensive cybersecurity through practical software, evidence workflows, and compliance-ready operations.\n\n<a href="${escapeHtml(WEBSITE)}">${escapeHtml(WEBSITE)}</a>`);
+    } else if (command === "/emergency" || text.includes("emergency")) {
+      await send(chatId, `<b>Security Incident Response</b>\n\n1. Isolate affected systems from the network.\n2. Preserve logs, timestamps, screenshots, and relevant messages.\n3. Notify the responsible IT and security contacts.\n4. Use established legal, insurer, and law-enforcement escalation paths when required.\n5. Contact GEM: ${escapeHtml(PHONE)} | ${escapeHtml(EMAIL)}`);
+    } else if (command === "/contact" || text.includes("contact us")) {
+      await send(chatId, `<b>Contact GEM Cybersecurity Assist</b>\n\nEmail: ${escapeHtml(EMAIL)}\nPhone: ${escapeHtml(PHONE)}\n<a href="${escapeHtml(WEBSITE)}">${escapeHtml(WEBSITE)}</a>`);
+    } else if (command === "/quote") {
+      await send(chatId, `<b>Request a Quote</b>\n\nSend your business name, industry, approximate user/device count, requested services, and compliance requirements to ${escapeHtml(EMAIL)}.`);
+    } else if (command === "/endpoint") {
+      await send(chatId, `<b>Endpoint Shield — $299/year</b>\n\nDevice posture tracking, baseline visibility, risk workflow, and executive reporting.`);
+    } else if (command === "/phishing") {
+      await send(chatId, `<b>Phishing Defense Toolkit — $199/year</b>\n\nCampaign planning, awareness tracking, training status, and executive reporting.`);
+    } else if (command === "/vault") {
+      await send(chatId, `<b>Compliance Vault — $499/year</b>\n\nEvidence register, control mapping, ownership, due dates, and audit-readiness tracking.`);
+    } else if (command === "/threatdash") {
+      await send(chatId, `<b>Threat Intel Dashboard — $399/year</b>\n\nWatchlists, signal tracking, risk priorities, and executive digests.`);
+    } else if (command === "/suite") {
+      await send(chatId, `<b>Security Starter Suite — $799/year</b>\n\nEndpoint Shield, Phishing Defense, Compliance Vault, and Threat Intel Dashboard in one bundle.`);
+    } else if (command === "/sitestatus") {
+      try {
+        const response = await fetch(WEBSITE, { method: "HEAD" });
+        await send(chatId, response.ok ? `${escapeHtml(WEBSITE)} is online — HTTP ${response.status}` : `${escapeHtml(WEBSITE)} returned HTTP ${response.status}`);
+      } catch {
+        await send(chatId, `${escapeHtml(WEBSITE)} could not be reached from the bot service.`);
+      }
+    } else {
+      await send(chatId, `Hi ${name}. Type /help to see all commands.`, MENU);
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error("Webhook processing failed", error);
+    return res.status(500).json({ ok: false, error: "Webhook processing failed" });
+  }
 }
