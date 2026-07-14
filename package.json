@@ -1,13 +1,15 @@
 {
   "name": "gemassist-telegram-growth-vercel",
-  "version": "1.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
+    "check": "node --check api/webhook.js && node --check api/set-webhook.js && node --check api/webhook-info.js && node --check api/start.js && node --check api/guide.js",
+    "test": "npm run check",
     "deploy": "vercel --prod"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }
