@@ -5,7 +5,12 @@ realestate - View real estate fraud alerts
 services - View services and pricing
 channel - Join the intelligence channel
 subscribe - Join the intelligence channel
-free_guide - Verify membership and open the free guide
+free_guide - Verify membership and open the premium guide
+share - Get a personal GemAssist sharing link
+updates - Enable the three-message onboarding sequence
+status - Check membership and update preferences
+stop - Stop automated updates
+unsubscribe - Stop automated updates
 latest_tools - View recommended starter tools
 opportunities - View opportunity resources
 endpoint - View Endpoint Shield
