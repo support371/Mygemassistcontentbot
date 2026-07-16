@@ -1,11 +1,12 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { growthStore, isGrowthStoreConfigured, referralCodeFor } from "../lib/growth-store.js";
 
-const VERSION = "4.1.0";
+const VERSION = "5.0.0";
 const WEBSITE = process.env.WEBSITE_URL || "https://gemcybersecurityassist.com";
 const EMAIL = process.env.CONTACT_EMAIL || "Marketing@gemcybersecurityassist.com";
 const PHONE = process.env.CONTACT_PHONE || "+1 (401) 702-2460";
 const CHANNEL_URL = process.env.CHANNEL_URL || "https://t.me/mycybersecureWealthsolution";
-const GOOGLE_APPS_SCRIPT_WEBHOOK = process.env.GOOGLE_APPS_SCRIPT_WEBHOOK || "";
+let cachedBotUsername = "";
 
 function safeEqual(left, right) {
   const a = Buffer.from(String(left || ""));
@@ -67,6 +68,18 @@ async function telegram(method, payload = {}) {
   return data.result;
 }
 
+async function discoverBotUsername() {
+  if (cachedBotUsername) return cachedBotUsername;
+  const configured = String(process.env.BOT_USERNAME || "").replace(/^@/, "");
+  if (configured) {
+    cachedBotUsername = configured;
+    return cachedBotUsername;
+  }
+  const bot = await telegram("getMe");
+  cachedBotUsername = bot.username || "Gemassistbuilder_Bot";
+  return cachedBotUsername;
+}
+
 async function send(chatId, text, extra = {}) {
   return telegram("sendMessage", {
     chat_id: chatId,
@@ -96,12 +109,41 @@ function joinKeyboard() {
   };
 }
 
+async function shareKeyboard(userId, source = "share") {
+  const botUsername = await discoverBotUsername();
+  const code = referralCodeFor(userId);
+  const payload = code ? `ref_${code}` : source;
+  const botUrl = `https://t.me/${encodeURIComponent(botUsername)}?start=${encodeURIComponent(payload)}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botUrl)}&text=${encodeURIComponent("Join GemAssist for practical cybersecurity, real-estate fraud alerts, tools, and opportunities.")}`;
+  return {
+    botUrl,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📤 Share GemAssist", url: shareUrl }],
+        [{ text: "📣 Open the channel", url: CHANNEL_URL }],
+      ],
+    },
+  };
+}
+
+function consentKeyboard() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🔔 Enable helpful updates", callback_data: "consent_updates" }],
+        [{ text: "🛑 Stop updates", callback_data: "stop_updates" }],
+      ],
+    },
+  };
+}
+
 const MENU = {
   reply_markup: {
     keyboard: [
       [{ text: "🔐 Threat Intel" }, { text: "🏠 Real Estate Alerts" }],
       [{ text: "💼 Services & Pricing" }, { text: "📣 Join Channel" }],
-      [{ text: "🎁 Free Guide" }, { text: "📞 Contact Us" }],
+      [{ text: "🎁 Free Guide" }, { text: "📤 Share GemAssist" }],
+      [{ text: "🔔 Update Status" }, { text: "🛑 Stop Updates" }],
       [{ text: "🚨 Emergency" }, { text: "❓ Help" }],
     ],
     resize_keyboard: true,
@@ -123,24 +165,47 @@ async function getMembership(userId) {
   }
 }
 
-async function saveVerifiedLead(user) {
-  if (!GOOGLE_APPS_SCRIPT_WEBHOOK) return;
-  try {
-    await fetch(GOOGLE_APPS_SCRIPT_WEBHOOK, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        source: "telegram",
-        telegram_user_id: user.id,
-        username: user.username || "",
-        first_name: user.first_name || "",
-        last_name: user.last_name || "",
-        verified_at: new Date().toISOString(),
-      }),
+function cleanStartPayload(value) {
+  const payload = String(value || "").trim();
+  return /^[A-Za-z0-9_-]{1,64}$/.test(payload) ? payload : "direct";
+}
+
+async function upsertSubscriber(user, chatId, payload, consentStatus = "pending") {
+  if (!isGrowthStoreConfigured()) return { ok: false, configured: false };
+  const referrer = payload.startsWith("ref_") ? payload.slice(4) : "";
+  const ownCode = referralCodeFor(user.id);
+  const result = await growthStore("upsert_subscriber", {
+    subscriber: {
+      chat_id: chatId,
+      user_id: user.id,
+      username: user.username || "",
+      first_name: user.first_name || "",
+      last_name: user.last_name || "",
+      consent_status: consentStatus,
+      referral_code: ownCode,
+      referred_by: referrer && referrer !== ownCode ? referrer : "",
+      source: referrer ? "referral" : payload,
+      last_seen_at: new Date().toISOString(),
+    },
+  });
+  if (result.ok && referrer && referrer !== ownCode) {
+    await growthStore("record_referral", {
+      referrer_code: referrer,
+      new_chat_id: chatId,
+      source: payload,
+      created_at: new Date().toISOString(),
     });
-  } catch (error) {
-    console.warn("Lead capture failed", error.message);
   }
+  return result;
+}
+
+async function saveVerifiedLead(user, chatId) {
+  if (!isGrowthStoreConfigured()) return;
+  await upsertSubscriber(user, chatId, "verified", "pending");
+  await growthStore("mark_verified", {
+    chat_id: chatId,
+    verified_at: new Date().toISOString(),
+  });
 }
 
 async function deliverGuide(req, chatId, user) {
@@ -153,9 +218,50 @@ async function deliverGuide(req, chatId, user) {
     await send(chatId, "Join the channel first, then tap <b>Verify membership</b> to unlock the guide.", joinKeyboard());
     return;
   }
-  await saveVerifiedLead(user);
+  await saveVerifiedLead(user, chatId);
   const guideUrl = process.env.PDF_URL || `${requestBaseUrl(req)}/guide.pdf`;
-  await send(chatId, `<b>Membership verified.</b>\n\n<a href="${escapeHtml(guideUrl)}">Open the 50 Free Tools & Opportunities guide</a>`, MENU);
+  await send(chatId, `<b>Membership verified.</b>\n\n<a href="${escapeHtml(guideUrl)}">Open the 50 Free Tools & Opportunities premium guide</a>`, MENU);
+}
+
+async function enableUpdates(chatId, user) {
+  if (!isGrowthStoreConfigured()) {
+    await send(chatId, "Automated follow-up storage is not connected yet. The channel and bot commands remain available.", MENU);
+    return false;
+  }
+  await upsertSubscriber(user, chatId, "telegram", "subscribed");
+  const result = await growthStore("set_consent", {
+    chat_id: chatId,
+    consent_status: "subscribed",
+    subscribed_at: new Date().toISOString(),
+  });
+  if (!result.ok) {
+    await send(chatId, "I could not save your update preference. Please try again later.", MENU);
+    return false;
+  }
+  await send(chatId, "<b>Helpful updates are enabled.</b>\n\nYou may receive up to three onboarding messages over the next seven days. Send /stop at any time to unsubscribe.", MENU);
+  return true;
+}
+
+async function stopUpdates(chatId) {
+  if (isGrowthStoreConfigured()) {
+    await growthStore("set_consent", {
+      chat_id: chatId,
+      consent_status: "unsubscribed",
+      unsubscribed_at: new Date().toISOString(),
+    });
+  }
+  await send(chatId, "<b>Automated updates stopped.</b>\n\nYou can still use the bot whenever you choose. Send /updates to enable the onboarding messages again.", MENU);
+}
+
+async function showUpdateStatus(chatId, userId) {
+  const membership = await getMembership(userId);
+  if (!isGrowthStoreConfigured()) {
+    await send(chatId, `<b>GemAssist status</b>\n\nChannel membership: ${membership.verified ? "verified" : "not verified"}\nAutomated follow-ups: storage not connected\nBot commands: active`, MENU);
+    return;
+  }
+  const stored = await growthStore("get_subscriber", { chat_id: chatId });
+  const consent = stored.subscriber?.consent_status || "pending";
+  await send(chatId, `<b>GemAssist status</b>\n\nChannel membership: ${membership.verified ? "verified" : "not verified"}\nAutomated follow-ups: ${escapeHtml(consent)}\nBot commands: active\n\nUse /updates to subscribe or /stop to unsubscribe.`, MENU);
 }
 
 function isValidWebhookRequest(req) {
@@ -170,6 +276,8 @@ export default async function handler(req, res) {
       version: VERSION,
       mode: "opt-in",
       automaticActivation: true,
+      consentBasedGrowth: true,
+      growthStoreConfigured: isGrowthStoreConfigured(),
     });
   }
   if (req.method !== "POST") {
@@ -186,7 +294,9 @@ export default async function handler(req, res) {
     if (update.callback_query) {
       const callback = update.callback_query;
       const chatId = callback.message?.chat?.id;
-      if (callback.data === "verify_membership" && chatId) {
+      if (!chatId) return res.status(200).json({ ok: true });
+
+      if (callback.data === "verify_membership") {
         const membership = await getMembership(callback.from.id);
         if (membership.verified) {
           await answerCallbackQuery(callback.id, "Membership verified");
@@ -195,6 +305,12 @@ export default async function handler(req, res) {
           await answerCallbackQuery(callback.id, "Membership not found yet");
           await send(chatId, "I could not verify your membership yet. Join the channel and try again.", joinKeyboard());
         }
+      } else if (callback.data === "consent_updates") {
+        const enabled = await enableUpdates(chatId, callback.from);
+        await answerCallbackQuery(callback.id, enabled ? "Updates enabled" : "Updates not enabled");
+      } else if (callback.data === "stop_updates") {
+        await stopUpdates(chatId);
+        await answerCallbackQuery(callback.id, "Updates stopped");
       }
       return res.status(200).json({ ok: true });
     }
@@ -204,15 +320,30 @@ export default async function handler(req, res) {
 
     const chatId = msg.chat.id;
     const rawText = String(msg.text || "").trim();
-    const command = rawText.toLowerCase().split("@")[0];
+    const tokens = rawText.split(/\s+/);
+    const command = String(tokens[0] || "").toLowerCase().split("@")[0];
     const text = rawText.toLowerCase();
     const name = escapeHtml(msg.from?.first_name || "there");
 
     if (command === "/start") {
-      await send(chatId, `<b>Welcome to GEM Cybersecurity Assist, ${name}.</b>\n\nUse this bot for defensive cybersecurity guidance, real-estate fraud alerts, services, and the free creator guide.\n\nJoin voluntarily, then verify membership to unlock the guide.`, joinKeyboard());
-      await send(chatId, "Use the menu below at any time.", MENU);
+      const payload = cleanStartPayload(tokens[1]);
+      await upsertSubscriber(msg.from, chatId, payload, "pending");
+      await send(chatId, `<b>Welcome to GEM Cybersecurity Assist, ${name}.</b>\n\nUse this bot for defensive cybersecurity guidance, real-estate fraud alerts, services, and the premium creator guide.\n\nJoin voluntarily, verify membership, and choose whether to enable a short onboarding update sequence.`, joinKeyboard());
+      await send(chatId, "Enable helpful updates only when you choose. The sequence contains no more than three messages over seven days and /stop works at any time.", consentKeyboard());
+      const share = await shareKeyboard(msg.from.id);
+      await send(chatId, "Use the menu below or share GemAssist with someone who would benefit.", share);
+      await send(chatId, "Main menu", MENU);
     } else if (["/help", "/commands"].includes(command) || text.includes("help")) {
-      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the guide\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
+      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the premium guide\n/share — Get your personal sharing link\n/updates — Enable the short onboarding sequence\n/status — Check membership and update preferences\n/stop — Stop automated updates\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
+    } else if (command === "/updates" || text.includes("enable helpful updates")) {
+      await enableUpdates(chatId, msg.from);
+    } else if (["/stop", "/unsubscribe"].includes(command) || text.includes("stop updates")) {
+      await stopUpdates(chatId);
+    } else if (command === "/status" || text.includes("update status")) {
+      await showUpdateStatus(chatId, msg.from.id);
+    } else if (command === "/share" || text.includes("share gemassist")) {
+      const share = await shareKeyboard(msg.from.id);
+      await send(chatId, `<b>Your GemAssist sharing link</b>\n\n${escapeHtml(share.botUrl)}\n\nShare it only with people who may find the resources useful.`, share);
     } else if (command === "/services" || text.includes("services & pricing")) {
       await send(chatId, `<b>GEM Services and Pricing</b>\n\n<b>Annual Software Subscriptions</b>\n1. Endpoint Shield — <b>$299/yr</b>\n2. Phishing Defense Toolkit — <b>$199/yr</b>\n3. Compliance Vault — <b>$499/yr</b>\n4. Threat Intel Dashboard — <b>$399/yr</b>\n5. Security Starter Suite — <b>$799/yr</b>\n\n<b>Professional Services</b>\n• Security Readiness Review — from $1,500\n• Compliance Evidence Sprint — from $2,500\n• Executive Security Reporting — $750/mo\n\nEmail: ${escapeHtml(EMAIL)}\nPhone: ${escapeHtml(PHONE)}\n<a href="${escapeHtml(WEBSITE)}">${escapeHtml(WEBSITE)}</a>`);
     } else if (["/intel", "/threats"].includes(command) || text.includes("threat intel")) {
