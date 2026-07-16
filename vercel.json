@@ -4,8 +4,15 @@
     "api/webhook.js": { "maxDuration": 10 },
     "api/set-webhook.js": { "maxDuration": 10 },
     "api/webhook-info.js": { "maxDuration": 10 },
+    "api/activate.js": { "maxDuration": 10 },
     "api/guide.js": { "maxDuration": 10 }
   },
+  "crons": [
+    {
+      "path": "/api/activate",
+      "schedule": "0 6 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -26,6 +33,7 @@
     { "src": "/api/webhook", "dest": "/api/webhook.js" },
     { "src": "/api/set-webhook", "dest": "/api/set-webhook.js" },
     { "src": "/api/webhook-info", "dest": "/api/webhook-info.js" },
+    { "src": "/api/activate", "dest": "/api/activate.js" },
     { "src": "/api/start", "dest": "/api/start.js" },
     { "src": "/guide.pdf", "dest": "/api/guide.js" },
     { "src": "/api/guide", "dest": "/api/guide.js" },
