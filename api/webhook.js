@@ -1,11 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
-const VERSION = "4.0.0";
+const VERSION = "4.1.0";
 const WEBSITE = process.env.WEBSITE_URL || "https://gemcybersecurityassist.com";
 const EMAIL = process.env.CONTACT_EMAIL || "Marketing@gemcybersecurityassist.com";
 const PHONE = process.env.CONTACT_PHONE || "+1 (401) 702-2460";
 const CHANNEL_URL = process.env.CHANNEL_URL || "https://t.me/mycybersecureWealthsolution";
-const CHANNEL_ID = process.env.CHANNEL_ID || "";
 const GOOGLE_APPS_SCRIPT_WEBHOOK = process.env.GOOGLE_APPS_SCRIPT_WEBHOOK || "";
 
 function safeEqual(left, right) {
@@ -26,6 +25,25 @@ function getBotToken() {
   const token = process.env.BOT_TOKEN;
   if (!token) throw new Error("BOT_TOKEN is not configured");
   return token;
+}
+
+function getWebhookSecret() {
+  const token = getBotToken();
+  return process.env.WEBHOOK_SECRET
+    || process.env.SECRET_TOKEN
+    || createHash("sha256").update(`gemassist-webhook:${token}`).digest("hex");
+}
+
+function getChannelTarget() {
+  if (process.env.CHANNEL_ID) return process.env.CHANNEL_ID;
+  try {
+    const url = new URL(CHANNEL_URL);
+    const slug = url.pathname.split("/").filter(Boolean).at(-1) || "";
+    if (slug && !slug.startsWith("+")) return `@${slug}`;
+  } catch {
+    // CHANNEL_URL validation is handled by the membership response below.
+  }
+  return "";
 }
 
 function requestBaseUrl(req) {
@@ -91,11 +109,12 @@ const MENU = {
 };
 
 async function getMembership(userId) {
-  if (!CHANNEL_ID) {
-    return { verified: false, configured: false, reason: "CHANNEL_ID is not configured" };
+  const channelTarget = getChannelTarget();
+  if (!channelTarget) {
+    return { verified: false, configured: false, reason: "A public CHANNEL_URL or CHANNEL_ID is required" };
   }
   try {
-    const member = await telegram("getChatMember", { chat_id: CHANNEL_ID, user_id: userId });
+    const member = await telegram("getChatMember", { chat_id: channelTarget, user_id: userId });
     const verified = ["creator", "administrator", "member"].includes(member.status)
       || (member.status === "restricted" && member.is_member === true);
     return { verified, configured: true, status: member.status };
@@ -140,24 +159,29 @@ async function deliverGuide(req, chatId, user) {
 }
 
 function isValidWebhookRequest(req) {
-  const configuredSecret = process.env.WEBHOOK_SECRET || process.env.SECRET_TOKEN;
-  if (!configuredSecret) return false;
-  return safeEqual(req.headers["x-telegram-bot-api-secret-token"], configuredSecret);
+  return safeEqual(req.headers["x-telegram-bot-api-secret-token"], getWebhookSecret());
 }
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
-    return res.status(200).json({ ok: true, service: "GemAssist Telegram Bot", version: VERSION, mode: "opt-in" });
+    return res.status(200).json({
+      ok: true,
+      service: "GemAssist Telegram Bot",
+      version: VERSION,
+      mode: "opt-in",
+      automaticActivation: true,
+    });
   }
   if (req.method !== "POST") {
     res.setHeader("Allow", "GET, POST");
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
-  if (!isValidWebhookRequest(req)) {
-    return res.status(401).json({ ok: false, error: "Invalid webhook secret" });
-  }
 
   try {
+    if (!isValidWebhookRequest(req)) {
+      return res.status(401).json({ ok: false, error: "Invalid webhook secret" });
+    }
+
     const update = req.body || {};
     if (update.callback_query) {
       const callback = update.callback_query;
