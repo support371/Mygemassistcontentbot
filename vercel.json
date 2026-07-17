@@ -9,6 +9,8 @@
     "api/secure-automation.js": { "maxDuration": 30 },
     "api/growth-status.js": { "maxDuration": 10 },
     "api/verify-growth-signature.js": { "maxDuration": 10 },
+    "api/growth-public-key.js": { "maxDuration": 10 },
+    "api/env-capabilities.js": { "maxDuration": 10 },
     "api/guide.js": { "maxDuration": 10 }
   },
   "crons": [
@@ -43,6 +45,8 @@
     { "src": "/api/secure-automation", "dest": "/api/secure-automation.js" },
     { "src": "/api/growth-status", "dest": "/api/growth-status.js" },
     { "src": "/api/verify-growth-signature", "dest": "/api/verify-growth-signature.js" },
+    { "src": "/api/growth-public-key", "dest": "/api/growth-public-key.js" },
+    { "src": "/api/env-capabilities", "dest": "/api/env-capabilities.js" },
     { "src": "/api/start", "dest": "/api/start.js" },
     { "src": "/guide.pdf", "dest": "/api/guide.js" },
     { "src": "/api/guide", "dest": "/api/guide.js" },
