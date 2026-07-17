@@ -1,4 +1,4 @@
-import { isGrowthStoreConfigured } from "../lib/growth-store.js";
+import { growthStoreStatus, isGrowthStoreConfigured } from "../lib/growth-store.js";
 
 function channelTargetConfigured() {
   if (process.env.CHANNEL_ID) return true;
@@ -11,38 +11,39 @@ function channelTargetConfigured() {
   }
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const cronSecretConfigured = Boolean(process.env.CRON_SECRET);
-  const setupKeyConfigured = Boolean(process.env.SETUP_KEY);
-  const storeConfigured = isGrowthStoreConfigured();
-  const channelConfigured = channelTargetConfigured();
   const botConfigured = Boolean(process.env.BOT_TOKEN);
-  const automaticChannelPublishingReady = botConfigured && channelConfigured && cronSecretConfigured;
-  const onboardingFollowupsReady = automaticChannelPublishingReady && storeConfigured;
+  const channelConfigured = channelTargetConfigured();
+  const storeConfigured = isGrowthStoreConfigured();
+  const store = storeConfigured ? await growthStoreStatus() : { ok: false, ready: false };
+  const storageReady = Boolean(store.ok && store.ready);
+  const automaticChannelPublishingReady = botConfigured && channelConfigured && storageReady;
+  const onboardingFollowupsReady = automaticChannelPublishingReady;
 
   return res.status(200).json({
     ok: true,
     service: "GemAssist Opt-in Growth Engine",
-    version: "5.0.1",
+    version: "5.1.0",
     mode: "consent-based",
     botConfigured,
     channelTargetConfigured: channelConfigured,
-    cronSecretConfigured,
-    setupKeyConfigured,
     growthStoreConfigured: storeConfigured,
+    growthStoreReady: storageReady,
     automaticChannelPublishingReady,
     onboardingFollowupsReady,
     referralLinksReady: botConfigured,
     unsubscribeControlsReady: true,
     scheduleUtc: "14:00 daily",
+    storageProvider: "Supabase",
     blockers: [
-      ...(!cronSecretConfigured ? ["CRON_SECRET"] : []),
-      ...(!storeConfigured ? ["GROWTH_STORE_URL"] : []),
+      ...(!botConfigured ? ["BOT_TOKEN"] : []),
+      ...(!channelConfigured ? ["CHANNEL_TARGET"] : []),
+      ...(!storageReady ? ["SUPABASE_GROWTH_STORE"] : []),
     ],
   });
 }
