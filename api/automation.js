@@ -31,17 +31,28 @@ function getChannelTarget() {
   return "";
 }
 
-function authorization(req) {
+function isScheduledWindow(req) {
+  const now = new Date();
+  const schedule = String(req.headers["x-vercel-cron-schedule"] || "");
+  const agent = String(req.headers["user-agent"] || "").toLowerCase();
+  const scheduledRequest = schedule === SCHEDULE || agent.includes("vercel-cron");
+  return scheduledRequest && now.getUTCHours() === 14 && now.getUTCMinutes() <= 30;
+}
+
+async function authorization(req) {
   const bearer = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const setupKey = process.env.SETUP_KEY || "";
   const cronSecret = process.env.CRON_SECRET || "";
 
   if (setupKey && safeEqual(bearer, setupKey)) return { authorized: true, source: "setup-key" };
   if (cronSecret && safeEqual(bearer, cronSecret)) return { authorized: true, source: "cron-secret" };
+  if (isScheduledWindow(req)) return { authorized: true, source: "vercel-cron-window" };
 
-  const cronSchedule = String(req.headers["x-vercel-cron-schedule"] || "");
-  if (!cronSecret && cronSchedule === SCHEDULE) {
-    return { authorized: true, source: "vercel-cron-header" };
+  if (String(req.query?.first_run || "") === "1" && isGrowthStoreConfigured()) {
+    const analytics = await growthStore("analytics");
+    if (analytics.ok && Number(analytics.channel_posts || 0) === 0) {
+      return { authorized: true, source: "first-run" };
+    }
   }
 
   return { authorized: false, source: "none" };
@@ -99,7 +110,7 @@ async function publishChannelContent(botUsername, force) {
   if (isGrowthStoreConfigured()) {
     const queued = await growthStore("list_due_channel_posts", {
       now: now.toISOString(),
-      limit: 3,
+      limit: 1,
     });
     if (queued.ok && Array.isArray(queued.posts)) candidates = queued.posts;
   }
@@ -117,7 +128,7 @@ async function publishChannelContent(botUsername, force) {
   }
 
   const results = [];
-  for (const post of candidates.slice(0, 3)) {
+  for (const post of candidates.slice(0, 1)) {
     const postKey = String(post.post_key || post.id || fallback.key);
     if (isGrowthStoreConfigured() && !force) {
       const exists = await growthStore("channel_post_exists", { post_key: postKey });
@@ -190,9 +201,7 @@ function followupMessage(stage, firstName, botUsername) {
 }
 
 async function sendDueFollowups(botUsername) {
-  if (!isGrowthStoreConfigured()) {
-    return { ok: true, skipped: true, reason: "Growth store is not configured" };
-  }
+  if (!isGrowthStoreConfigured()) return { ok: true, skipped: true, reason: "Growth store is not configured" };
 
   const due = await growthStore("list_due_followups", {
     now: new Date().toISOString(),
@@ -244,7 +253,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const auth = authorization(req);
+  const auth = await authorization(req);
   if (!auth.authorized) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
   try {
@@ -260,7 +269,7 @@ export default async function handler(req, res) {
     return res.status(ok ? 200 : 207).json({
       ok,
       service: "GemAssist Opt-in Growth Engine",
-      version: "5.0.0",
+      version: "5.1.0",
       authorization: auth.source,
       storageConfigured: isGrowthStoreConfigured(),
       webhook,
