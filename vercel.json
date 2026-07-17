@@ -8,11 +8,12 @@
     "api/automation.js": { "maxDuration": 30 },
     "api/secure-automation.js": { "maxDuration": 30 },
     "api/growth-status.js": { "maxDuration": 10 },
+    "api/verify-growth-signature.js": { "maxDuration": 10 },
     "api/guide.js": { "maxDuration": 10 }
   },
   "crons": [
     {
-      "path": "/api/secure-automation",
+      "path": "/api/automation",
       "schedule": "0 14 * * *"
     }
   ],
@@ -37,10 +38,11 @@
     { "src": "/api/set-webhook", "dest": "/api/set-webhook.js" },
     { "src": "/api/webhook-info", "dest": "/api/webhook-info.js" },
     { "src": "/api/activate", "dest": "/api/activate.js" },
-    { "src": "/api/automation", "dest": "/api/secure-automation.js" },
-    { "src": "/api/automation.js", "dest": "/api/secure-automation.js" },
+    { "src": "/api/automation", "dest": "/api/automation.js" },
+    { "src": "/api/automation.js", "dest": "/api/automation.js" },
     { "src": "/api/secure-automation", "dest": "/api/secure-automation.js" },
     { "src": "/api/growth-status", "dest": "/api/growth-status.js" },
+    { "src": "/api/verify-growth-signature", "dest": "/api/verify-growth-signature.js" },
     { "src": "/api/start", "dest": "/api/start.js" },
     { "src": "/guide.pdf", "dest": "/api/guide.js" },
     { "src": "/api/guide", "dest": "/api/guide.js" },
