@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, "fix/**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,6 +12,7 @@ permissions:
 jobs:
   syntax:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,6 +20,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Show toolchain versions
+        run: |
+          node --version
+          npm --version
       - name: Validate serverless functions
         run: npm test
       - name: Validate Vercel configuration
@@ -25,7 +31,10 @@ jobs:
       - name: Detect committed Telegram bot tokens
         shell: bash
         run: |
-          if grep -RInE --exclude-dir=.git '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}' .; then
-            echo 'Potential Telegram bot token detected in the repository.'
+          set -euo pipefail
+          matches_file="$(mktemp)"
+          if git grep -lI -E '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}' -- . >"$matches_file"; then
+            echo 'Potential Telegram bot token detected in tracked repository files:'
+            sed 's/^/- /' "$matches_file"
             exit 1
           fi
