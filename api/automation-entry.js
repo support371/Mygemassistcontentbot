@@ -13,10 +13,14 @@ function parseQuery(requestUrl) {
 function runIdentity(req) {
   const cronSchedule = String(req.headers["x-vercel-cron-schedule"] || "");
   const userAgent = String(req.headers["user-agent"] || "").toLowerCase();
-  const source = cronSchedule || userAgent.includes("vercel-cron") ? "vercel-cron" : "automation-entry";
+  const hasBearer = /^Bearer\s+\S+/i.test(String(req.headers.authorization || ""));
+  const firstRun = String(req.query?.first_run || "") === "1";
+  const cronRequest = Boolean(cronSchedule || userAgent.includes("vercel-cron"));
+  const source = cronRequest ? "vercel-cron" : "automation-entry";
   const requestId = String(req.headers["x-vercel-id"] || req.headers["x-request-id"] || Date.now());
   return {
     source,
+    track: req.method === "GET" && (cronRequest || hasBearer || firstRun),
     runKey: `automation:${source}:${requestId}`.slice(0, 80),
   };
 }
@@ -41,7 +45,7 @@ export default async function handler(req, res) {
 
   const identity = runIdentity(req);
   let runKey = "";
-  if (isGrowthStoreConfigured()) {
+  if (identity.track && isGrowthStoreConfigured()) {
     const claim = await growthStore("claim_automation_run", {
       run_key: identity.runKey,
       source: identity.source,
