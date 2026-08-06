@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vercel dev",
     "check": "node --check api/webhook.js && node --check api/set-webhook.js && node --check api/webhook-info.js && node --check api/activate.js && node --check api/automation.js && node --check api/automation-entry.js && node --check api/growth-status.js && node --check api/start.js && node --check api/guide.js && node --check lib/growth-store.js && node --check lib/growth-store-rpc.js && node --check lib/growth-signing.js && node --check lib/supabase-growth-config.js && node --check lib/content-calendar.js && node --check lib/scheduler-auth.js",
-    "test": "npm run check",
+    "unit": "node --test test/*.test.js",
+    "test": "npm run check && npm run unit",
     "vercel-build": "npm test",
     "deploy": "vercel --prod"
   },

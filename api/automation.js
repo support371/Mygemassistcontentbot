@@ -36,7 +36,7 @@ function isScheduledWindow(req) {
   const schedule = String(req.headers["x-vercel-cron-schedule"] || "");
   const agent = String(req.headers["user-agent"] || "").toLowerCase();
   const scheduledRequest = schedule === SCHEDULE || agent.includes("vercel-cron");
-  return scheduledRequest && now.getUTCHours() === 14 && now.getUTCMinutes() <= 30;
+  return scheduledRequest && now.getUTCHours() === 14 && now.getUTCMinutes() <= 59;
 }
 
 async function authorization(req) {
