@@ -35,6 +35,33 @@ async function completeRun(runKey, status, detail) {
   if (!result.ok) console.error("Automation run completion was not recorded", result.error);
 }
 
+export function installRunFinalizer(res, finalize) {
+  const originalEnd = res.end.bind(res);
+  let completionPromise = null;
+  let ended = false;
+
+  res.end = function guardedEnd(...args) {
+    if (ended) return res;
+    ended = true;
+    completionPromise = Promise.resolve()
+      .then(finalize)
+      .catch((error) => {
+        console.error("Automation run finalization failed", error);
+      })
+      .then(() => originalEnd(...args));
+    return res;
+  };
+
+  return {
+    get ended() {
+      return ended;
+    },
+    async wait() {
+      if (completionPromise) await completionPromise;
+    },
+  };
+}
+
 export default async function handler(req, res) {
   Object.defineProperty(req, "query", {
     configurable: true,
@@ -54,20 +81,28 @@ export default async function handler(req, res) {
     else if (!claim.ok) console.error("Automation run claim was not recorded", claim.error);
   }
 
-  try {
-    const result = await automationHandler(req, res);
+  const finalizer = installRunFinalizer(res, async () => {
     const httpStatus = Number(res.statusCode || 200);
     await completeRun(runKey, httpStatus >= 200 && httpStatus < 300 ? "completed" : "partial", {
       http_status: httpStatus,
       source: identity.source,
     });
+  });
+
+  try {
+    const result = await automationHandler(req, res);
+    await finalizer.wait();
     return result;
   } catch (error) {
-    await completeRun(runKey, "failed", {
-      http_status: Number(res.statusCode || 500),
-      source: identity.source,
-      error: String(error?.message || error).slice(0, 500),
-    });
+    if (!finalizer.ended) {
+      await completeRun(runKey, "failed", {
+        http_status: Number(res.statusCode || 500),
+        source: identity.source,
+        error: String(error?.message || error).slice(0, 500),
+      });
+    } else {
+      await finalizer.wait();
+    }
     throw error;
   }
 }
