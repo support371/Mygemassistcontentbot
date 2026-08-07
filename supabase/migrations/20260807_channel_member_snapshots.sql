@@ -8,6 +8,10 @@ create table if not exists public.gemassist_channel_member_snapshots (
 
 revoke all on public.gemassist_channel_member_snapshots from anon, authenticated;
 
+insert into public.gemassist_channel_member_snapshots(snapshot_date,member_count,measured_at,source,detail)
+values('2026-07-18',15,'2026-07-18T00:00:00Z','verified_baseline',jsonb_build_object('verified_baseline',true))
+on conflict(snapshot_date) do nothing;
+
 create or replace function public.gemassist_channel_snapshot_gateway(p_raw text, p_signature text)
 returns jsonb
 language plpgsql
