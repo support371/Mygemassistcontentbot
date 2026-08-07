@@ -7,6 +7,7 @@
     "api/activate.js": { "maxDuration": 10 },
     "api/automation-entry.js": { "maxDuration": 30 },
     "api/growth-status.js": { "maxDuration": 10 },
+    "api/channel-members.js": { "maxDuration": 10 },
     "api/guide.js": { "maxDuration": 10 }
   },
   "crons": [
@@ -39,6 +40,7 @@
     { "src": "/api/automation", "dest": "/api/automation-entry.js" },
     { "src": "/api/automation.js", "dest": "/api/automation-entry.js" },
     { "src": "/api/growth-status", "dest": "/api/growth-status.js" },
+    { "src": "/api/channel-members", "dest": "/api/channel-members.js" },
     { "src": "/api/start", "dest": "/api/start.js" },
     { "src": "/guide.pdf", "dest": "/api/guide.js" },
     { "src": "/api/guide", "dest": "/api/guide.js" },
