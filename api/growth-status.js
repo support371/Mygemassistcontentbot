@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok: true,
     service: "GemAssist Opt-in Growth Engine",
-    version: "5.1.0",
+    version: "5.1.2",
     mode: "consent-based",
     botConfigured,
     channelTargetConfigured: channelConfigured,
