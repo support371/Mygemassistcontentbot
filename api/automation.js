@@ -269,7 +269,7 @@ export default async function handler(req, res) {
     return res.status(ok ? 200 : 207).json({
       ok,
       service: "GemAssist Opt-in Growth Engine",
-      version: "5.1.0",
+      version: "5.1.2",
       authorization: auth.source,
       storageConfigured: isGrowthStoreConfigured(),
       webhook,
