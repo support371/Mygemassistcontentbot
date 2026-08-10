@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { growthStore, isGrowthStoreConfigured, referralCodeFor } from "../lib/growth-store.js";
 
-const VERSION = "5.0.0";
+const VERSION = "5.1.2";
 const WEBSITE = process.env.WEBSITE_URL || "https://gemcybersecurityassist.com";
 const EMAIL = process.env.CONTACT_EMAIL || "Marketing@gemcybersecurityassist.com";
 const PHONE = process.env.CONTACT_PHONE || "+1 (401) 702-2460";
