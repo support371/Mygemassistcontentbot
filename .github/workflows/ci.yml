@@ -24,17 +24,5 @@ jobs:
         run: |
           node --version
           npm --version
-      - name: Validate serverless functions
-        run: npm test
-      - name: Validate Vercel configuration
-        run: node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"
-      - name: Detect committed Telegram bot tokens
-        shell: bash
-        run: |
-          set -euo pipefail
-          matches_file="$(mktemp)"
-          if git grep -lI -E '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}' -- . >"$matches_file"; then
-            echo 'Potential Telegram bot token detected in tracked repository files:'
-            sed 's/^/- /' "$matches_file"
-            exit 1
-          fi
+      - name: Run repository release gate
+        run: npm run release-gate
