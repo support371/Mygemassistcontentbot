@@ -21,6 +21,7 @@ export default async function handler(req, res) {
     intelligence: await inspectPublicChannel(target.handle),
   })));
   const ranked = inspected.sort((a, b) => (b.intelligence?.score || 0) - (a.intelligence?.score || 0));
+  const placementCandidates = ranked.filter((target) => target.externalPlacementEligible === true);
 
   return res.status(200).json({
     ok: true,
@@ -33,10 +34,19 @@ export default async function handler(req, res) {
       unsolicitedPrivateMessaging: false,
       unauthorizedPosting: false,
       placementPermissionRequired: true,
+      usOnlyExternalPlacement: true,
+      unconfirmedCountryFailsClosed: true,
     },
-    summary: { registered: registry.length, inspected: inspected.length, resolved: inspected.filter((x) => x.intelligence?.ok).length },
+    summary: {
+      registered: registry.length,
+      inspected: inspected.length,
+      resolved: inspected.filter((x) => x.intelligence?.ok).length,
+      externalPlacementEligible: placementCandidates.length,
+      externalPlacementBlockedByCountryPolicy: ranked.filter((x) => x.source !== "owned" && x.externalPlacementEligible !== true).length,
+    },
     opportunities: ranked,
+    placementCandidates,
     placementLinks: Object.fromEntries(SOURCE_CODES.map((code) => [code, trackedPlacementUrl(origin, code)])),
-    workflow: ["collect_public_handle", "deduplicate", "inspect_public_metadata", "rank_relevance", "review_admin_contact_route", "obtain_permission", "publish_tracked_placement", "measure_bot_start_and_opt_in"],
+    workflow: ["collect_public_handle", "deduplicate", "inspect_public_metadata", "rank_relevance", "enforce_us_only_external_placement", "review_admin_contact_route", "obtain_permission", "publish_tracked_placement", "measure_bot_start_and_opt_in"],
   });
 }
