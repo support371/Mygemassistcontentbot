@@ -9,7 +9,8 @@
     "api/growth-status.js": { "maxDuration": 10 },
     "api/channel-members.js": { "maxDuration": 10 },
     "api/guide.js": { "maxDuration": 10 },
-    "api/telegram-intelligence.js": { "maxDuration": 10 }
+    "api/telegram-intelligence.js": { "maxDuration": 10 },
+    "api/telegram-discovery.js": { "maxDuration": 10 }
   },
   "crons": [
     {
@@ -44,6 +45,7 @@
     { "src": "/api/channel-members", "dest": "/api/channel-members.js" },
     { "src": "/api/start", "dest": "/api/start.js" },
     { "src": "/api/telegram-intelligence", "dest": "/api/telegram-intelligence.js" },
+    { "src": "/api/telegram-discovery", "dest": "/api/telegram-discovery.js" },
     { "src": "/guide.pdf", "dest": "/api/guide.js" },
     { "src": "/api/guide", "dest": "/api/guide.js" },
     { "src": "/(.*)", "dest": "/public/index.html" }

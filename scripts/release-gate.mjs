@@ -28,6 +28,8 @@ async function validateVercelConfig() {
     ["/api/automation", "/api/automation-entry.js"],
     ["/api/growth-status", "/api/growth-status.js"],
     ["/api/channel-members", "/api/channel-members.js"],
+    ["/api/telegram-intelligence", "/api/telegram-intelligence.js"],
+    ["/api/telegram-discovery", "/api/telegram-discovery.js"],
     ["/guide.pdf", "/api/guide.js"],
   ]);
 
