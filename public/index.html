@@ -9,7 +9,7 @@
   <meta property="og:description" content="Practical cybersecurity guidance, free tools and useful opportunity alerts. Join the GemAssist Telegram community voluntarily." />
   <meta name="robots" content="index,follow" />
   <style>
-    :root{color-scheme:dark}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#07111f;color:#fff}.wrap{max-width:940px;margin:0 auto;padding:52px 20px}.card{background:#101b30;border:1px solid #263b5e;border-radius:22px;padding:38px;box-shadow:0 20px 70px rgba(0,0,0,.28)}h1{font-size:clamp(36px,7vw,58px);line-height:1.04;margin:8px 0 18px}h2{margin-top:34px}p{font-size:18px;line-height:1.65;color:#dbe5ff}.btn{display:inline-block;background:#48d17a;color:#06100a;padding:16px 22px;border-radius:12px;text-decoration:none;font-weight:800;margin-top:12px}.secondary{margin-left:8px;background:#dbe5ff}.list{margin-top:28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.item{background:#172641;border-radius:12px;padding:16px;line-height:1.5}.notice{margin-top:28px;padding:15px;border:1px solid #344f75;border-radius:12px;color:#b9c9e8;font-size:14px;line-height:1.55}small{color:#9fb2d9}.proof{font-size:15px;color:#aabddd;margin-top:20px}
+    :root{color-scheme:dark}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#07111f;color:#fff}.wrap{max-width:940px;margin:0 auto;padding:52px 20px}.card{background:#101b30;border:1px solid #263b5e;border-radius:22px;padding:38px;box-shadow:0 20px 70px rgba(0,0,0,.28)}h1{font-size:clamp(36px,7vw,58px);line-height:1.04;margin:8px 0 18px}h2{margin-top:34px}p{font-size:18px;line-height:1.65;color:#dbe5ff}.btn{display:inline-block;background:#48d17a;color:#06100a;padding:16px 22px;border-radius:12px;text-decoration:none;font-weight:800;margin-top:12px;border:0;cursor:pointer}.secondary{margin-left:8px;background:#dbe5ff}.share{background:#6aa6ff}.list{margin-top:28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.item{background:#172641;border-radius:12px;padding:16px;line-height:1.5}.sharebox{margin-top:30px;padding:20px;background:#13213a;border:1px solid #31517d;border-radius:16px}.share-actions{display:flex;flex-wrap:wrap;gap:8px}.share-actions .btn{margin-left:0}.notice{margin-top:28px;padding:15px;border:1px solid #344f75;border-radius:12px;color:#b9c9e8;font-size:14px;line-height:1.55}small{color:#9fb2d9}.proof{font-size:15px;color:#aabddd;margin-top:20px}.status{font-size:14px;color:#9fb2d9;margin-top:10px;min-height:20px}
   </style>
 </head>
 <body>
@@ -25,11 +25,43 @@
         <div class="item"><b>Tools</b><br>Curated free creator, productivity and security resources.</div>
         <div class="item"><b>Opportunities</b><br>Selected practical ideas and resources without unsolicited private messages.</div>
       </div>
+      <div class="sharebox">
+        <h2>Help someone useful find GemAssist</h2>
+        <p>Share the tracked invitation with a friend, colleague, client, or community where you have permission to post. The recipient still chooses whether to start the bot or join the channel.</p>
+        <div class="share-actions">
+          <button class="btn share" id="shareNative" type="button">Share Invitation</button>
+          <a class="btn secondary" id="shareTelegram" href="#" rel="noopener noreferrer" target="_blank">Share on Telegram</a>
+          <button class="btn secondary" id="copyInvite" type="button">Copy Invitation Link</button>
+        </div>
+        <div class="status" id="shareStatus" aria-live="polite"></div>
+      </div>
       <h2>Why start with the bot?</h2>
       <p>The bot records the campaign source, explains what you are joining, and keeps channel membership separate from bot consent. You remain in control and can unsubscribe from bot follow-ups.</p>
       <p class="proof">No scraping. No forced adds. No purchased members. No unsolicited private outreach.</p>
       <div class="notice">Membership and bot opt-in are voluntary. GemAssist uses tracked invitation links to understand which approved placements are useful, while preserving unsubscribe enforcement and duplicate suppression.</div>
     </section>
   </main>
+  <script>
+    (() => {
+      const inviteUrl = `${location.origin}/api/start?src=channel_invite`;
+      const text = 'Free defensive cybersecurity guidance, useful tools and opportunity resources from GemAssist.';
+      const telegram = document.getElementById('shareTelegram');
+      const status = document.getElementById('shareStatus');
+      telegram.href = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(text)}`;
+      document.getElementById('copyInvite').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(inviteUrl); status.textContent = 'Tracked invitation link copied.'; }
+        catch { status.textContent = inviteUrl; }
+      });
+      document.getElementById('shareNative').addEventListener('click', async () => {
+        if (navigator.share) {
+          try { await navigator.share({title:'GemAssist', text, url:inviteUrl}); status.textContent = 'Share dialog opened.'; }
+          catch (error) { if (error && error.name !== 'AbortError') status.textContent = 'Use the Telegram or copy option instead.'; }
+        } else {
+          try { await navigator.clipboard.writeText(inviteUrl); status.textContent = 'Tracked invitation link copied.'; }
+          catch { status.textContent = inviteUrl; }
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
