@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "check": "node --check api/webhook.js && node --check api/set-webhook.js && node --check api/webhook-info.js && node --check api/activate.js && node --check api/automation.js && node --check api/automation-entry.js && node --check api/growth-status.js && node --check api/start.js && node --check api/guide.js && node --check api/channel-members.js && node --check api/telegram-intelligence.js && node --check lib/growth-store.js && node --check lib/growth-store-rpc.js && node --check lib/growth-signing.js && node --check lib/supabase-growth-config.js && node --check lib/content-calendar.js && node --check lib/scheduler-auth.js && node --check lib/telegram-intelligence.js && node --check scripts/release-gate.mjs",
+    "check": "node --check api/webhook.js && node --check api/set-webhook.js && node --check api/webhook-info.js && node --check api/activate.js && node --check api/automation.js && node --check api/automation-entry.js && node --check api/growth-status.js && node --check api/start.js && node --check api/guide.js && node --check api/channel-members.js && node --check api/telegram-intelligence.js && node --check api/telegram-discovery.js && node --check lib/growth-store.js && node --check lib/growth-store-rpc.js && node --check lib/growth-signing.js && node --check lib/supabase-growth-config.js && node --check lib/content-calendar.js && node --check lib/scheduler-auth.js && node --check lib/telegram-intelligence.js && node --check lib/telegram-discovery-registry.js && node --check scripts/release-gate.mjs",
     "unit": "node --test test/*.test.js",
     "test": "npm run check && npm run unit",
     "release-gate": "npm test && node scripts/release-gate.mjs",
