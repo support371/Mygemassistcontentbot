@@ -38,12 +38,30 @@ export function approvedStartSource(query = {}) {
   return APPROVED_START_SOURCES.has(candidate) ? candidate : "website";
 }
 
+export function approvedStartSourceFromRequest(req = {}) {
+  if (typeof req.url === "string" && req.url) {
+    try {
+      const url = new URL(req.url, "https://gemassist.invalid");
+      return approvedStartSource({
+        src: url.searchParams.get("src"),
+        source: url.searchParams.get("source"),
+      });
+    } catch {
+      return "website";
+    }
+  }
+
+  // Test/local compatibility only. Production Vercel requests provide req.url,
+  // which avoids triggering Node's deprecated legacy query parser.
+  return approvedStartSource(req.query || {});
+}
+
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   const username = await discoverBotUsername();
   if (!username) {
     return res.status(503).json({ ok: false, error: "Telegram bot identity could not be resolved" });
   }
-  const source = approvedStartSource(req.query || {});
+  const source = approvedStartSourceFromRequest(req);
   return res.redirect(302, `https://t.me/${encodeURIComponent(username)}?start=${encodeURIComponent(source)}`);
 }

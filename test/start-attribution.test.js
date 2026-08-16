@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import startHandler, { approvedStartSource } from "../api/start.js";
+import startHandler, { approvedStartSource, approvedStartSourceFromRequest } from "../api/start.js";
 
 const APPROVED = [
   "channel_wealth_20260719",
@@ -53,8 +53,9 @@ test("approved acquisition sources survive the website-to-bot redirect", async (
   try {
     for (const source of APPROVED) {
       assert.equal(approvedStartSource({ src: source }), source);
+      assert.equal(approvedStartSourceFromRequest({ url: `/api/start?src=${encodeURIComponent(source)}` }), source);
       const res = mockResponse();
-      await startHandler({ query: { src: source } }, res);
+      await startHandler({ url: `/api/start?src=${encodeURIComponent(source)}` }, res);
       assert.equal(res.statusCode, 302);
       assert.equal(res.location, `https://t.me/Gemassistbuilder_Bot?start=${source}`);
       assert.equal(res.headers.get("cache-control"), "no-store");
@@ -69,8 +70,11 @@ test("unknown or malformed acquisition sources fail closed to website attributio
   assert.equal(approvedStartSource({ src: "unknown_campaign" }), "website");
   assert.equal(approvedStartSource({ src: "https://example.com" }), "website");
   assert.equal(approvedStartSource({}), "website");
+  assert.equal(approvedStartSourceFromRequest({ url: "/api/start?src=unknown_campaign" }), "website");
+  assert.equal(approvedStartSourceFromRequest({ url: "%" }), "website");
 });
 
 test("source query alias is supported for approved tracked links", () => {
   assert.equal(approvedStartSource({ source: "ext_telegramads" }), "ext_telegramads");
+  assert.equal(approvedStartSourceFromRequest({ url: "/api/start?source=ext_telegramads" }), "ext_telegramads");
 });
