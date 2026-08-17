@@ -21,7 +21,13 @@ export default async function handler(req, res) {
     intelligence: await inspectPublicChannel(target.handle),
   })));
   const ranked = inspected.sort((a, b) => (b.intelligence?.score || 0) - (a.intelligence?.score || 0));
-  const placementCandidates = ranked.filter((target) => target.externalPlacementEligible === true);
+  const placementCandidates = ranked
+    .filter((target) => target.externalPlacementEligible === true)
+    .map((target) => ({
+      ...target,
+      trackedPlacementUrl: trackedPlacementUrl(origin, target.sourceCode || "channel_invite"),
+      activationState: target.permission === "permission_granted" ? "ready_to_publish" : "awaiting_admin_permission",
+    }));
 
   return res.status(200).json({
     ok: true,
@@ -42,6 +48,8 @@ export default async function handler(req, res) {
       inspected: inspected.length,
       resolved: inspected.filter((x) => x.intelligence?.ok).length,
       externalPlacementEligible: placementCandidates.length,
+      readyToPublish: placementCandidates.filter((x) => x.activationState === "ready_to_publish").length,
+      awaitingAdminPermission: placementCandidates.filter((x) => x.activationState === "awaiting_admin_permission").length,
       externalPlacementBlockedByCountryPolicy: ranked.filter((x) => x.source !== "owned" && x.externalPlacementEligible !== true).length,
     },
     opportunities: ranked,

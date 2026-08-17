@@ -47,3 +47,14 @@ test("external placements fail closed unless the Telegram target is explicitly c
   assert.equal(ownedTarget.externalPlacementEligible, false);
   assert.equal(ownedTarget.countryPolicy, "owned_not_external");
 });
+
+test("verified USA Jobs target is active by default but still permission-gated", () => {
+  const registry = discoveryRegistry("", "");
+  const target = registry.find((item) => item.handle.toLowerCase() === "@wisestepjobs");
+  assert.ok(target);
+  assert.equal(target.country, "US");
+  assert.equal(target.countryPolicy, "US_confirmed");
+  assert.equal(target.externalPlacementEligible, true);
+  assert.equal(target.permission, "permission_required");
+  assert.equal(target.sourceCode, "ext_jobsregion");
+});
