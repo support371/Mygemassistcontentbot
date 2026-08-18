@@ -25,6 +25,7 @@ async function validateVercelConfig() {
 
   const requiredRoutes = new Map([
     ["/api/webhook", "/api/webhook.js"],
+    ["/api/webhook-health", "/api/webhook-info.js"],
     ["/api/automation", "/api/automation-entry.js"],
     ["/api/growth-status", "/api/growth-status.js"],
     ["/api/channel-members", "/api/channel-members.js"],
@@ -38,6 +39,11 @@ async function validateVercelConfig() {
     if (!match || match.dest !== dest) {
       fail(`vercel.json must route ${src} to ${dest}`);
     }
+  }
+
+  const functionCount = Object.keys(config.functions || {}).length;
+  if (functionCount > 12) {
+    fail(`Vercel Hobby deployment must not exceed 12 configured Serverless Functions (found ${functionCount})`);
   }
 
   const cron = crons.find((entry) => entry?.path === "/api/automation");
@@ -97,4 +103,4 @@ await detectCommittedTelegramTokens();
 await validatePackageContract();
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log("RELEASE_GATE_PASS: Vercel config, route invariants, cron schedule, API cache policy, runtime contract, and Telegram token scan passed.");
+console.log("RELEASE_GATE_PASS: Vercel config, route invariants, Hobby function-count guard, cron schedule, API cache policy, runtime contract, and Telegram token scan passed.");
