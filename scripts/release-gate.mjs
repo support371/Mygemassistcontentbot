@@ -25,6 +25,7 @@ async function validateVercelConfig() {
 
   const requiredRoutes = new Map([
     ["/api/webhook", "/api/webhook.js"],
+    ["/api/webhook-health", "/api/webhook-health.js"],
     ["/api/automation", "/api/automation-entry.js"],
     ["/api/growth-status", "/api/growth-status.js"],
     ["/api/channel-members", "/api/channel-members.js"],
