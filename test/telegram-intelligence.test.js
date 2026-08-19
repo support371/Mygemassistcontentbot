@@ -58,3 +58,16 @@ test("verified USA Jobs target is active by default but still permission-gated",
   assert.equal(target.permission, "permission_required");
   assert.equal(target.sourceCode, "ext_jobsregion");
 });
+
+test("owned legalized digital ID channel is USA-verified without becoming an external placement", () => {
+  const registry = discoveryRegistry("", "");
+  const target = registry.find((item) => item.handle.toLowerCase() === "@legalized_cybersecure_digital_id");
+  assert.ok(target);
+  assert.equal(target.country, "US");
+  assert.equal(target.permission, "owned");
+  assert.equal(target.source, "owned");
+  assert.equal(target.countryPolicy, "owned_not_external");
+  assert.equal(target.externalPlacementEligible, false);
+  assert.equal(target.ownedValidationTarget, true);
+  assert.equal(target.sourceCode, "channel_invite");
+});
