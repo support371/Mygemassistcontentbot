@@ -56,20 +56,7 @@ async function sendOwnedValidationInvitation(url) {
   }
 
   const bot = await telegram("getMe");
-  const membership = await telegram("getChatMember", {
-    chat_id: OWNED_VALIDATION_TARGET,
-    user_id: bot.id,
-  });
-  if (!["administrator", "creator"].includes(String(membership?.status || ""))) {
-    return {
-      ok: false,
-      status: 409,
-      error: "bot_is_not_channel_admin",
-      botUsername: bot.username || "",
-      membershipStatus: membership?.status || "unknown",
-    };
-  }
-
+  const chat = await telegram("getChat", { chat_id: OWNED_VALIDATION_TARGET });
   const trackedUrl = `${PRODUCTION_BASE_URL}/api/start?src=channel_invite`;
   const message = await telegram("sendMessage", {
     chat_id: OWNED_VALIDATION_TARGET,
@@ -86,10 +73,12 @@ async function sendOwnedValidationInvitation(url) {
     status: 200,
     sent: true,
     target: OWNED_VALIDATION_TARGET,
+    targetChatId: String(chat.id || ""),
+    targetTitle: chat.title || "",
     country: "US",
     ownership: "owner_confirmed",
     botUsername: bot.username || "",
-    botMembershipStatus: membership.status,
+    permissionValidatedBy: "telegram_sendMessage_success",
     messageId: message.message_id,
     trackedUrl,
   };
