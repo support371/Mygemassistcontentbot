@@ -272,6 +272,8 @@ GEM professional services: Security Readiness Review from $1,500, Compliance Evi
 Contact: ${EMAIL}, ${PHONE}, ${WEBSITE}.
 Rules: plain text only, no markdown; at most 120 words; never help with attacks, intrusion, malware, fraud or evading security; for an active incident, give containment steps and point to /emergency; when unsure, say so and suggest contacting GEM.`;
 
+export const AI_NOTICE = "AI answer from an external model provider. Do not share passwords, account numbers or other personal details.";
+
 async function aiReply(chatId, question) {
   if (!isAiConfigured()) return false;
   const prompt = String(question || "").trim().slice(0, 1500);
@@ -285,7 +287,7 @@ async function aiReply(chatId, question) {
     { preferSmall: true, maxTokens: 450, temperature: 0.4, budgetMs: 22000 },
   );
   if (!result.ok) return false;
-  await send(chatId, escapeHtml(result.text.slice(0, 3500)), MENU);
+  await send(chatId, `${escapeHtml(result.text.slice(0, 3400))}\n\n<i>${escapeHtml(AI_NOTICE)}</i>`, MENU);
   return true;
 }
 
@@ -351,7 +353,16 @@ export default async function handler(req, res) {
     const text = rawText.toLowerCase();
     const name = escapeHtml(msg.from?.first_name || "there");
 
-    if (command === "/start") {
+    // /ask is dispatched first so keyword shortcuts below ("real estate",
+    // "threat intel", ...) never intercept an explicit AI question.
+    if (command === "/ask") {
+      const question = rawText.slice(tokens[0].length).trim();
+      if (!question) {
+        await send(chatId, `Send your question after /ask, for example: /ask how do I verify wire instructions?\n\n${AI_NOTICE}`, MENU);
+      } else if (!(await aiReply(chatId, question))) {
+        await send(chatId, "The assistant is busy right now. Try again later, or use /help for the command menu.", MENU);
+      }
+    } else if (command === "/start") {
       const payload = cleanStartPayload(tokens[1]);
       await upsertSubscriber(msg.from, chatId, payload, "pending");
       await send(chatId, `<b>Welcome to GEM Cybersecurity Assist, ${name}.</b>\n\nUse this bot for defensive cybersecurity guidance, real-estate fraud alerts, services, and the premium creator guide.\n\nJoin voluntarily, verify membership, and choose whether to enable a short onboarding update sequence.`, joinKeyboard());
@@ -360,7 +371,7 @@ export default async function handler(req, res) {
       await send(chatId, "Use the menu below or share GemAssist with someone who would benefit.", share);
       await send(chatId, "Main menu", MENU);
     } else if (["/help", "/commands"].includes(command) || ["help", "❓ help"].includes(text)) {
-      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/ask — Ask the GemAssist AI a question\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the premium guide\n/share — Get your personal sharing link\n/updates — Enable the short onboarding sequence\n/status — Check membership and update preferences\n/stop — Stop automated updates\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
+      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/ask — Ask the GemAssist AI a question (answered by an external AI provider; never share passwords or personal details)\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the premium guide\n/share — Get your personal sharing link\n/updates — Enable the short onboarding sequence\n/status — Check membership and update preferences\n/stop — Stop automated updates\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
     } else if (command === "/updates" || text.includes("enable helpful updates")) {
       await enableUpdates(chatId, msg.from);
     } else if (["/stop", "/unsubscribe"].includes(command) || text.includes("stop updates")) {
@@ -408,13 +419,6 @@ export default async function handler(req, res) {
         await send(chatId, response.ok ? `${escapeHtml(WEBSITE)} is online — HTTP ${response.status}` : `${escapeHtml(WEBSITE)} returned HTTP ${response.status}`);
       } catch {
         await send(chatId, `${escapeHtml(WEBSITE)} could not be reached from the bot service.`);
-      }
-    } else if (command === "/ask") {
-      const question = rawText.slice(tokens[0].length).trim();
-      if (!question) {
-        await send(chatId, "Send your question after /ask, for example: /ask how do I verify wire instructions?", MENU);
-      } else if (!(await aiReply(chatId, question))) {
-        await send(chatId, "The assistant is busy right now. Try again later, or use /help for the command menu.", MENU);
       }
     } else if (command.startsWith("/") || !(await aiReply(chatId, rawText))) {
       await send(chatId, `Hi ${name}. Type /help to see all commands.`, MENU);
