@@ -46,6 +46,12 @@ async function validateVercelConfig() {
     fail(`Vercel Hobby deployment must not exceed 12 configured Serverless Functions (found ${functionCount})`);
   }
 
+  // Vercel deploys every file in api/ as a function, configured or not.
+  const apiFiles = (await fs.readdir(path.join(ROOT, "api"))).filter((name) => /\.(c|m)?js$/.test(name));
+  if (apiFiles.length > 12) {
+    fail(`Vercel Hobby deployment must not exceed 12 Serverless Functions; api/ has ${apiFiles.length} files`);
+  }
+
   const cron = crons.find((entry) => entry?.path === "/api/automation");
   if (!cron || cron.schedule !== "0 14 * * *") {
     fail("vercel.json must keep /api/automation scheduled at 0 14 * * *");
@@ -103,4 +109,4 @@ await detectCommittedTelegramTokens();
 await validatePackageContract();
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log("RELEASE_GATE_PASS: Vercel config, route invariants, Hobby function-count guard, cron schedule, API cache policy, runtime contract, and Telegram token scan passed.");
+console.log("RELEASE_GATE_PASS: Vercel config, route invariants, Hobby function-count guard (configured and api/ files), cron schedule, API cache policy, runtime contract, and Telegram token scan passed.");

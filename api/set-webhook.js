@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { tiktokAuthHandler } from "../lib/tiktok-auth.js";
 
 function safeEqual(left, right) {
   const a = Buffer.from(String(left || ""));
@@ -16,6 +17,10 @@ function isAuthorized(req) {
 }
 
 export default async function handler(req, res) {
+  // /api/tiktok-auth shares this owner-setup function to stay within the
+  // Vercel Hobby limit of 12 Serverless Functions per deployment.
+  const requestUrl = String(req.url || "");
+  if (requestUrl.startsWith("/api/tiktok-auth") || /[?&]tiktok_auth=1(&|$)/.test(requestUrl)) return tiktokAuthHandler(req, res);
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ ok: false, error: "Use POST with Authorization: Bearer <SETUP_KEY>" });
