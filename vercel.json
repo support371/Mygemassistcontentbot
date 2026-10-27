@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/webhook.js": { "maxDuration": 10 },
+    "api/webhook.js": { "maxDuration": 30 },
     "api/set-webhook.js": { "maxDuration": 10 },
     "api/webhook-info.js": { "maxDuration": 10 },
     "api/activate.js": { "maxDuration": 10 },
@@ -10,7 +10,8 @@
     "api/channel-members.js": { "maxDuration": 10 },
     "api/guide.js": { "maxDuration": 10 },
     "api/telegram-intelligence.js": { "maxDuration": 10 },
-    "api/telegram-discovery.js": { "maxDuration": 10 }
+    "api/telegram-discovery.js": { "maxDuration": 10 },
+    "api/tiktok-auth.js": { "maxDuration": 15 }
   },
   "crons": [
     {
@@ -47,6 +48,7 @@
     { "src": "/api/start", "dest": "/api/start.js" },
     { "src": "/api/telegram-intelligence", "dest": "/api/telegram-intelligence.js" },
     { "src": "/api/telegram-discovery", "dest": "/api/telegram-discovery.js" },
+    { "src": "/api/tiktok-auth", "dest": "/api/tiktok-auth.js" },
     { "src": "/guide.pdf", "dest": "/api/guide.js" },
     { "src": "/api/guide", "dest": "/api/guide.js" },
     { "src": "/(.*)", "dest": "/public/index.html" }

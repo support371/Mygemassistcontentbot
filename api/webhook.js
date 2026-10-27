@@ -1,7 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { growthStore, isGrowthStoreConfigured, referralCodeFor } from "../lib/growth-store.js";
+import { complete, isAiConfigured } from "../lib/llm.js";
 
-const VERSION = "5.1.2";
+const VERSION = "5.2.0";
 const WEBSITE = process.env.WEBSITE_URL || "https://gemcybersecurityassist.com";
 const EMAIL = process.env.CONTACT_EMAIL || "Marketing@gemcybersecurityassist.com";
 const PHONE = process.env.CONTACT_PHONE || "+1 (401) 702-2460";
@@ -264,6 +265,30 @@ async function showUpdateStatus(chatId, userId) {
   await send(chatId, `<b>GemAssist status</b>\n\nChannel membership: ${membership.verified ? "verified" : "not verified"}\nAutomated follow-ups: ${escapeHtml(consent)}\nBot commands: active\n\nUse /updates to subscribe or /stop to unsubscribe.`, MENU);
 }
 
+const ASSISTANT_BRIEF = `You are GemAssist, the Telegram assistant of GEM Cybersecurity Assist (GEM Enterprise).
+You give practical, defensive guidance on cybersecurity, real-estate fraud prevention, and finance safety, and you explain GEM services.
+GEM software (annual): Endpoint Shield $299, Phishing Defense Toolkit $199, Compliance Vault $499, Threat Intel Dashboard $399, Security Starter Suite $799.
+GEM professional services: Security Readiness Review from $1,500, Compliance Evidence Sprint from $2,500, Executive Security Reporting $750/month.
+Contact: ${EMAIL}, ${PHONE}, ${WEBSITE}.
+Rules: plain text only, no markdown; at most 120 words; never help with attacks, intrusion, malware, fraud or evading security; for an active incident, give containment steps and point to /emergency; when unsure, say so and suggest contacting GEM.`;
+
+async function aiReply(chatId, question) {
+  if (!isAiConfigured()) return false;
+  const prompt = String(question || "").trim().slice(0, 1500);
+  if (prompt.length < 3) return false;
+  telegram("sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
+  const result = await complete(
+    [
+      { role: "system", content: ASSISTANT_BRIEF },
+      { role: "user", content: prompt },
+    ],
+    { preferSmall: true, maxTokens: 450, temperature: 0.4, budgetMs: 22000 },
+  );
+  if (!result.ok) return false;
+  await send(chatId, escapeHtml(result.text.slice(0, 3500)), MENU);
+  return true;
+}
+
 function isValidWebhookRequest(req) {
   return safeEqual(req.headers["x-telegram-bot-api-secret-token"], getWebhookSecret());
 }
@@ -278,6 +303,7 @@ export default async function handler(req, res) {
       automaticActivation: true,
       consentBasedGrowth: true,
       growthStoreConfigured: isGrowthStoreConfigured(),
+      aiConfigured: isAiConfigured(),
     });
   }
   if (req.method !== "POST") {
@@ -333,8 +359,8 @@ export default async function handler(req, res) {
       const share = await shareKeyboard(msg.from.id);
       await send(chatId, "Use the menu below or share GemAssist with someone who would benefit.", share);
       await send(chatId, "Main menu", MENU);
-    } else if (["/help", "/commands"].includes(command) || text.includes("help")) {
-      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the premium guide\n/share — Get your personal sharing link\n/updates — Enable the short onboarding sequence\n/status — Check membership and update preferences\n/stop — Stop automated updates\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
+    } else if (["/help", "/commands"].includes(command) || ["help", "❓ help"].includes(text)) {
+      await send(chatId, `<b>GEM Assistant — Commands</b>\n\n/ask — Ask the GemAssist AI a question\n/intel — Defensive threat priorities\n/realestate — Real-estate fraud alerts\n/services — Services and pricing\n/channel — Join the channel\n/free_guide — Verify and open the premium guide\n/share — Get your personal sharing link\n/updates — Enable the short onboarding sequence\n/status — Check membership and update preferences\n/stop — Stop automated updates\n/latest_tools — Recommended tools\n/opportunities — Opportunity resources\n/contact — Contact GEM\n/emergency — Incident-response steps\n/sitestatus — Check the website`);
     } else if (command === "/updates" || text.includes("enable helpful updates")) {
       await enableUpdates(chatId, msg.from);
     } else if (["/stop", "/unsubscribe"].includes(command) || text.includes("stop updates")) {
@@ -383,7 +409,14 @@ export default async function handler(req, res) {
       } catch {
         await send(chatId, `${escapeHtml(WEBSITE)} could not be reached from the bot service.`);
       }
-    } else {
+    } else if (command === "/ask") {
+      const question = rawText.slice(tokens[0].length).trim();
+      if (!question) {
+        await send(chatId, "Send your question after /ask, for example: /ask how do I verify wire instructions?", MENU);
+      } else if (!(await aiReply(chatId, question))) {
+        await send(chatId, "The assistant is busy right now. Try again later, or use /help for the command menu.", MENU);
+      }
+    } else if (command.startsWith("/") || !(await aiReply(chatId, rawText))) {
       await send(chatId, `Hi ${name}. Type /help to see all commands.`, MENU);
     }
 

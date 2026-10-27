@@ -1,0 +1,96 @@
+name: TikTok autopost
+
+# Builds a GEM Enterprise TikTok video and posts it through the TikTok
+# Content Posting API. Scheduled runs only post when the repository variable
+# TIKTOK_AUTOPOST is set to "on"; manual runs default to a dry run that only
+# builds the video (downloadable from the run's artifacts).
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+    - cron: "47 17 * * *"
+    - cron: "23 21 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build the video without posting
+        type: boolean
+        default: true
+      topic:
+        description: "Vertical: cybersecurity, real-estate, finance or legal (blank rotates)"
+        type: string
+        required: false
+
+concurrency:
+  group: tiktok-autopost
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  produce:
+    if: github.event_name != 'schedule' || vars.TIKTOK_AUTOPOST == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+      TOPIC: ${{ inputs.topic }}
+      OUT_DIR: tiktok-out
+      PIPER_MODEL: ${{ github.workspace }}/voices/en_US-ryan-medium.onnx
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+      TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+      TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+      TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Use Python for Piper
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install media tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core >/dev/null
+          ffmpeg -version | head -1
+
+      - name: Cache Piper voice
+        uses: actions/cache@v4
+        with:
+          path: voices
+          key: piper-en_US-ryan-medium-v1
+
+      - name: Install Piper voice
+        continue-on-error: true
+        run: |
+          pip install --quiet piper-tts==1.2.0
+          mkdir -p voices
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/medium
+          [ -s voices/en_US-ryan-medium.onnx ] || curl -fsSL -o voices/en_US-ryan-medium.onnx "$base/en_US-ryan-medium.onnx"
+          [ -s voices/en_US-ryan-medium.onnx.json ] || curl -fsSL -o voices/en_US-ryan-medium.onnx.json "$base/en_US-ryan-medium.onnx.json"
+          echo "Piper sample" | piper --model voices/en_US-ryan-medium.onnx --output_file /tmp/piper-check.wav
+
+      - name: Build and post
+        run: node scripts/tiktok/autopost.mjs
+
+      - name: Keep the video for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-${{ github.run_id }}
+          path: tiktok-out/
+          if-no-files-found: ignore
+          retention-days: 7

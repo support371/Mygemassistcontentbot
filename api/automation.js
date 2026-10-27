@@ -1,6 +1,38 @@
 import { timingSafeEqual } from "node:crypto";
 import { dailyPost } from "../lib/content-calendar.js";
 import { growthStore, isGrowthStoreConfigured } from "../lib/growth-store.js";
+import { completeJson, isAiConfigured } from "../lib/llm.js";
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+// Writes today's channel post with an open-weight model, using the evergreen
+// topic as the brief. Returns null so the static post is used on any failure.
+export async function generateChannelPost(fallback, options = {}) {
+  if (!isAiConfigured(options.env)) return null;
+  const result = await completeJson(
+    [
+      {
+        role: "system",
+        content: "You write daily Telegram channel posts for GEM Cybersecurity Assist: practical, defensive, trustworthy, no hype. Reply with only JSON {\"title\": string (max 60 chars), \"body\": string (60-110 words, plain text, may use line breaks and up to 4 short bullet lines starting with •)}.",
+      },
+      {
+        role: "user",
+        content: `Date: ${fallback.dateKey}\nTopic: ${fallback.title}\nKey point to build on: ${fallback.body}\nWrite a fresh post on this topic with one concrete action readers can take today.`,
+      },
+    ],
+    { maxTokens: 600, temperature: 0.7, budgetMs: 15000, ...options },
+  );
+  const title = String(result.data?.title || "").trim().slice(0, 80);
+  const body = String(result.data?.body || "").trim().slice(0, 1200);
+  if (!result.ok || !title || body.length < 40) return null;
+  return { title, body, provider: result.provider, model: result.model };
+}
 
 const SCHEDULE = "0 14 * * *";
 const BASE_URL = (process.env.PUBLIC_BASE_URL || "https://mygemassistcontentbot.vercel.app").replace(/\/$/, "");
@@ -116,14 +148,23 @@ async function publishChannelContent(botUsername, force) {
   }
 
   if (candidates.length === 0) {
+    let alreadySent = false;
+    if (isGrowthStoreConfigured() && !force) {
+      const exists = await growthStore("channel_post_exists", { post_key: fallback.key });
+      alreadySent = Boolean(exists.ok && exists.exists);
+    }
+    const generated = alreadySent ? null : await generateChannelPost(fallback);
+    const title = generated ? escapeHtml(generated.title) : fallback.title;
+    const body = generated ? escapeHtml(generated.body) : fallback.body;
     candidates = [{
       id: fallback.key,
       post_key: fallback.key,
-      text_html: `<b>${fallback.title}</b>\n\n${fallback.body}\n\n<a href="${CHANNEL_URL}">GemAssist intelligence channel</a>`,
+      text_html: `<b>${title}</b>\n\n${body}\n\n<a href="${CHANNEL_URL}">GemAssist intelligence channel</a>`,
       button_text: "",
       button_url: "",
       guide: fallback.guide,
-      fallback: true,
+      fallback: !generated,
+      generated_by: generated ? `${generated.provider}:${generated.model}` : "",
     }];
   }
 
@@ -161,7 +202,7 @@ async function publishChannelContent(botUsername, force) {
           status: "sent",
         });
       }
-      results.push({ postKey, sent: true, messageId: message.message_id });
+      results.push({ postKey, sent: true, messageId: message.message_id, generatedBy: post.generated_by || "static" });
     } catch (error) {
       if (isGrowthStoreConfigured()) {
         await growthStore("record_channel_post", {
@@ -269,7 +310,8 @@ export default async function handler(req, res) {
     return res.status(ok ? 200 : 207).json({
       ok,
       service: "GemAssist Opt-in Growth Engine",
-      version: "5.1.2",
+      version: "5.2.0",
+      aiConfigured: isAiConfigured(),
       authorization: auth.source,
       storageConfigured: isGrowthStoreConfigured(),
       webhook,
