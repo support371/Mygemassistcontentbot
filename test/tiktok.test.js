@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { authorizeUrl, choosePrivacy, chunkPlan, directPostVideo } from "../lib/tiktok.js";
-import { makeState, verifyState } from "../api/tiktok-auth.js";
+import { makeState, verifyState } from "../lib/tiktok-auth.js";
 import { generateChannelPost } from "../api/automation.js";
 import { pickVertical, sanitizePlan, VERTICALS, wrapHook } from "../scripts/tiktok/autopost.mjs";
 
@@ -78,4 +78,14 @@ test("channel post generation uses the model reply", async () => {
   const post = await generateChannelPost({ dateKey: "2026-10-27", title: "T", body: "B" }, { env: { CF_ACCOUNT_ID: "a", CF_AI_TOKEN: "t" }, fetchImpl });
   assert.equal(post.title, "Lock down email first");
   assert.equal(post.provider, "cloudflare");
+});
+
+test("setup function hands /api/tiktok-auth to the TikTok sign-in", async () => {
+  const { default: handler } = await import("../api/set-webhook.js");
+  for (const url of ["/api/tiktok-auth?key=x", "/api/set-webhook.js?tiktok_auth=1&key=x"]) {
+    const res = { statusCode: 0, headers: {}, body: "", setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(b) { this.body = String(b || ""); } };
+    await handler({ method: "GET", url, headers: { host: "x.test" } }, res);
+    assert.equal(res.statusCode, 503);
+    assert.match(res.body, /TikTok connection is not configured/);
+  }
 });
